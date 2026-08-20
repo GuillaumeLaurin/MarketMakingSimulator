@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches: []
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the pipeline even when the modules have no source files yet"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VCPKG_DISABLE_METRICS: "1"
+
+jobs:
+  guard:
+    name: Guard - detect sources
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: detect
+        shell: bash
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Forced run requested via workflow_dispatch."
+            exit 0
+          fi
+          found=$(find modules src -type f \
+                    \( -name '*.cpp' -o -name '*.cxx' -o -name '*.cc' \
+                    -o -name '*.hpp' -o -name '*.hxx' -o -name '*.h' \) 2>/dev/null | head -n 1)
+          if [ -n "$found" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Sources detected (e.g. $found); running the full pipeline."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No C/C++ files under modules/ or src/ yet; skipping build, lint, sanitizers and coverage."
+          fi
+
+  build:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    name: Build - ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux GCC",    os: ubuntu-latest,   cc: gcc }
+          - { name: "Linux Clang",  os: ubuntu-latest,   cc: clang }
+          - { name: "Windows MSVC", os: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            ~/AppData/Local/vcpkg/archives
+          key: vcpkg-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-
+            vcpkg-${{ runner.os }}-
+
+      - name: Select Clang
+        if: matrix.cc == 'clang'
+        run: |
+          echo "CC=clang"   >> "$GITHUB_ENV"
+          echo "CXX=clang++" >> "$GITHUB_ENV"
+
+      - name: Set up (Linux)
+        if: runner.os == 'Linux'
+        run: bash ci/setup-linux.sh
+
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set up (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./ci/setup-windows.ps1
+
+      - name: Build & test
+        shell: bash
+        run: bash ci/build.sh dev
+
+  lint:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    name: Lint - clang-format + clang-tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-Linux-lint-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-Linux-
+      - run: bash ci/setup-linux.sh
+      - run: bash ci/check-format.sh
+      - run: bash ci/check-tidy.sh dev
+
+  sanitizers:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    name: Sanitizers - ASan + UBSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-Linux-asan-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-Linux-
+      - run: bash ci/setup-linux.sh
+      - run: bash ci/sanitize.sh asan
+
+  coverage:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-Linux-coverage-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-Linux-
+      - run: bash ci/setup-linux.sh
+      - run: bash ci/coverage.sh
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/coverage/coverage.xml
+          if-no-files-found: ignore
+
+  docs:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    name: Docs - Doxygen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-Linux-docs-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-Linux-
+      - run: bash ci/setup-linux.sh
+      - name: Build API docs
+        run: |
+          cmake --preset dev -DMMS_BUILD_DOCS=ON
+          cmake --build --preset dev --target docs
+      - name: Upload API docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: build/dev/docs/html
+          if-no-files-found: warn

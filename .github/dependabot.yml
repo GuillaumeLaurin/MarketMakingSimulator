@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Keep the GitHub Actions used by .github/workflows/ up to date.
+  # (Dependabot does not support vcpkg; bump vcpkg.json's builtin-baseline by hand
+  #  with: cd $VCPKG_ROOT && git pull, then update the baseline SHA.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"

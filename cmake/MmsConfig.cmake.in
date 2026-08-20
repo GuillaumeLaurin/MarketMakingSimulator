@@ -1,0 +1,30 @@
+# ------------------------------------------------------------------------------
+#  MMSConfig.cmake  --  package config for  find_package(MMS)   [install tree]
+#  Defines the imported targets  MMS::core  MMS::math  MMS::mms  MMS::version
+#  and adds the reusable MMS CMake helpers to CMAKE_MODULE_PATH.
+# ------------------------------------------------------------------------------
+@PACKAGE_INIT@
+
+set(MMS_LINKAGE "@MMS_LINKAGE@")
+set(MMS_MODULES "@MMS_MODULES@")
+
+set_and_check(MMS_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(MMS_LIB_DIR     "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
+
+# Reusable helpers shipped with the package (MmsCommon, MmsHelpers, ...).
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
+include("${CMAKE_CURRENT_LIST_DIR}/MmsPackageConfigHelpers.cmake")
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+# Public dependency carried in a module's link interface (MMS::math -> Eigen).
+# fmt / tomlplusplus / nlohmann-json / CLI11 are used only by the application
+# (src/) which is not part of this package, so they are not required here.
+find_dependency(Eigen3 CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/MmsTargets.cmake")
+
+check_required_components(MMS)
+
+mms_package_announce(MMS "${MMS_LINKAGE}")

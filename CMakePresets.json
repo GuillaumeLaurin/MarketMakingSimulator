@@ -1,0 +1,89 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "generator": "Ninja",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "mingw",
+      "hidden": true,
+      "description": "MSYS2 / MinGW-w64 UCRT64 toolchain + matching vcpkg triplet.",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++",
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-dynamic",
+        "VCPKG_HOST_TRIPLET": "x64-mingw-dynamic"
+      }
+    },
+    {
+      "name": "dev-base",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_MANIFEST_FEATURES": "tests;benchmarks",
+        "MMS_BUILD_TESTS": "ON",
+        "MMS_BUILD_BENCHMARKS": "ON",
+        "MMS_WERROR": "ON"
+      }
+    },
+    {
+      "name": "release-base",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_MANIFEST_FEATURES": "",
+        "MMS_BUILD_TESTS": "OFF",
+        "MMS_BUILD_BENCHMARKS": "OFF",
+        "MMS_ENABLE_LTO": "ON"
+      }
+    },
+
+    { "name": "dev",           "displayName": "Dev (native toolchain)",  "inherits": ["dev-base", "vcpkg"] },
+    { "name": "dev-mingw",     "displayName": "Dev (MinGW-w64)",         "inherits": ["mingw", "dev-base", "vcpkg"] },
+    { "name": "release",       "displayName": "Release (native)",        "inherits": ["release-base", "vcpkg"] },
+    { "name": "release-mingw", "displayName": "Release (MinGW-w64)",     "inherits": ["mingw", "release-base", "vcpkg"] },
+
+    {
+      "name": "asan",
+      "displayName": "ASan + UBSan (Debug)",
+      "inherits": ["dev-base", "vcpkg"],
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "tests",
+        "MMS_BUILD_BENCHMARKS": "OFF",
+        "MMS_SANITIZE": "address,undefined"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Coverage (Debug, GCC/Clang)",
+      "inherits": ["dev-base", "vcpkg"],
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "tests",
+        "MMS_BUILD_BENCHMARKS": "OFF",
+        "MMS_WERROR": "OFF",
+        "MMS_COVERAGE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev",           "configurePreset": "dev" },
+    { "name": "dev-mingw",     "configurePreset": "dev-mingw" },
+    { "name": "release",       "configurePreset": "release" },
+    { "name": "release-mingw", "configurePreset": "release-mingw" },
+    { "name": "asan",          "configurePreset": "asan" },
+    { "name": "coverage",      "configurePreset": "coverage" }
+  ],
+  "testPresets": [
+    { "name": "dev",       "configurePreset": "dev",       "output": { "outputOnFailure": true }, "execution": { "noTestsAction": "ignore" } },
+    { "name": "dev-mingw", "configurePreset": "dev-mingw", "output": { "outputOnFailure": true }, "execution": { "noTestsAction": "ignore" } },
+    { "name": "asan",      "configurePreset": "asan",      "output": { "outputOnFailure": true }, "execution": { "noTestsAction": "ignore" } },
+    { "name": "coverage",  "configurePreset": "coverage",  "output": { "outputOnFailure": true }, "execution": { "noTestsAction": "ignore" } }
+  ]
+}
