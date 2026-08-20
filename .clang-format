@@ -1,0 +1,37 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+AccessModifierOffset: -4
+NamespaceIndentation: None
+
+PointerAlignment: Left
+QualifierAlignment: Left
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+IndentPPDirectives: AfterHash
+SeparateDefinitionBlocks: Always
+SpaceAfterTemplateKeyword: false
+FixNamespaceComments: true
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<(core|math|mms|simulation|app)/'
+    Priority: 3
+  - Regex: '^<[^/.]+>$'
+    Priority: 1
+  - Regex: '^<.*\.h(pp)?>$'
+    Priority: 2
+  - Regex: '^".*"$'
+    Priority: 4
+...

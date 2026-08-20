@@ -1,0 +1,21 @@
+# ------------------------------------------------------------------------------
+#  MMSConfig.cmake  --  package config for  find_package(MMS)   [BUILD TREE]
+#  Written to ${PROJECT_BINARY_DIR} so a downstream project can do
+#      find_package(MMS REQUIRED PATHS /path/to/mms/build)
+#  without installing. Analogue of TinyORM's TinyOrmBuildTreeConfig.cmake.in.
+# ------------------------------------------------------------------------------
+set(MMS_VERSION "@PROJECT_VERSION@")
+set(MMS_LINKAGE "@MMS_LINKAGE@")
+set(MMS_MODULES "@MMS_MODULES@")
+
+list(APPEND CMAKE_MODULE_PATH "@MMS_BUILD_TREE_MODULE_PATH@")
+include("@PROJECT_SOURCE_DIR@/cmake/MmsPackageConfigHelpers.cmake")
+
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("@PROJECT_BINARY_DIR@/MmsTargets.cmake")
+
+if(NOT MMS_FIND_QUIETLY)
+    message(STATUS "Found MMS @PROJECT_VERSION@ (@MMS_LINKAGE@, build tree) at @PROJECT_BINARY_DIR@")
+endif()

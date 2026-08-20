@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/GuillaumeLaurin/MMS/blob/main/CONTRIBUTING.md
+    about: How to set up, report issues, and open pull requests.
