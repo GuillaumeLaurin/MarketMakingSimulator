@@ -24,8 +24,8 @@ struct PhiloxBlock {
     using counter_type = std::array<word_type, counter_words>;
     using key_type = std::array<word_type, key_words>;
 
-    /// Round multipliers and the Weyl key-schedule increments (golden ratio,
-    /// sqrt(3) - 1). Values from the Random123 reference.
+    // Round multipliers and the Weyl key-schedule increments (golden ratio,
+    // sqrt(3) - 1). Values from the Random123 reference.
     static constexpr word_type multiplier_0 = 0xD2E7'470E'E14C'6C93ULL;
     static constexpr word_type multiplier_1 = 0xCA5A'8263'9512'1157ULL;
     static constexpr word_type weyl_0       = 0x9E37'79B9'7F4A'7C15ULL;
