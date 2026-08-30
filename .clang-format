@@ -19,7 +19,7 @@ BreakBeforeBraces: Attach
 AllowShortFunctionsOnASingleLine: InlineOnly
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-IndentPPDirectives: AfterHash
+IndentPPDirectives: None
 SeparateDefinitionBlocks: Always
 SpaceAfterTemplateKeyword: false
 FixNamespaceComments: true

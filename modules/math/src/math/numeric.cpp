@@ -5,8 +5,6 @@
 /// real translation unit of MMS::math: it un-stubs the module and pins the
 /// C++20 toolchain configuration in compile_commands.json.
 
-#include <math/numeric.hpp>
-
 #include <cmath>
 #include <concepts>
 #include <cstddef>
@@ -14,11 +12,14 @@
 #include <numbers>
 #include <span>
 
+#include <math/numeric.hpp>
+
 namespace mms::math {
 
-bool all_close(std::span<const double> a, std::span<const double> b,
-               double rel_tol, double abs_tol) noexcept
-{
+bool all_close(std::span<const double> a,
+               std::span<const double> b,
+               double rel_tol,
+               double abs_tol) noexcept {
     if (a.size() != b.size()) {
         return false;
     }
@@ -30,8 +31,7 @@ bool all_close(std::span<const double> a, std::span<const double> b,
     return true;
 }
 
-double max_abs_diff(std::span<const double> a, std::span<const double> b) noexcept
-{
+double max_abs_diff(std::span<const double> a, std::span<const double> b) noexcept {
     if (a.size() != b.size() || a.empty()) {
         return std::numeric_limits<double>::quiet_NaN();
     }
@@ -45,4 +45,4 @@ double max_abs_diff(std::span<const double> a, std::span<const double> b) noexce
     return worst;
 }
 
-}  // namespace mms::math
+} // namespace mms::math
