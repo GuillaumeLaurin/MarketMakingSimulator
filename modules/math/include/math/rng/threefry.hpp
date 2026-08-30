@@ -15,6 +15,7 @@ namespace mms::math::rng {
 
 struct ThreefryBlock {
     using word_type = std::uint64_t;
+    using result_type = word_type;
 
     static constexpr std::size_t word_count    = 4;
     static constexpr std::size_t key_words     = 4;
@@ -65,7 +66,7 @@ struct ThreefryBlock {
                 x3 ^= x2;
             } else {
                 x0 += x3;
-                x1 = rotl(x1, rot_0.at(k));
+                x3 = rotl(x3, rot_0.at(k));
                 x3 ^= x0;
                 x2 += x1;
                 x1 = rotl(x1, rot_1.at(k));

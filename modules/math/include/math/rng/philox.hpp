@@ -16,6 +16,7 @@ namespace mms::math::rng {
 
 struct PhiloxBlock {
     using word_type = std::uint64_t;
+    using result_type = word_type;
 
     static constexpr std::size_t word_count    = 4;
     static constexpr std::size_t key_words     = 2;
