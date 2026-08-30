@@ -2,9 +2,9 @@
 #define MMS_MATH_RNG_COUNTER_HPP
 
 /// \file
-/// Counter<N>: an N-word little-endian unsigned integer, the position of a 
+/// Counter<N>: an N-word little-endian unsigned integer, the position of a
 /// counter-based generator. Increment-with-carry lives here as a public,
-/// independently testable operation
+/// independently testable operation.
 
 #include <array>
 #include <cstddef>
@@ -12,8 +12,7 @@
 
 namespace mms::math::rng {
 
-template <std::size_t N>
-struct Counter {
+template<std::size_t N> struct Counter {
     std::array<std::uint64_t, N> words{};
 
     constexpr void bump(std::uint64_t add = 1) noexcept {

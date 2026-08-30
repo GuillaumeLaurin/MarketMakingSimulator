@@ -2,7 +2,7 @@
 #define MMS_MATH_RNG_HPP
 
 /// \file
-/// Umbrella for the MMM::math RNG layer.
+/// Umbrella for the MMS::math RNG layer.
 
 #include <math/rng/counter_based_engine.hpp>
 #include <math/rng/engine.hpp>

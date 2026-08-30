@@ -13,12 +13,7 @@
 
 namespace mms::math::rng {
 
-enum class Subsystem : std::uint8_t {
-    Price,
-    AdverseFlow,
-    Latency,
-    PriceFactor
-};
+enum class Subsystem : std::uint8_t { Price, AdverseFlow, Latency, PriceFactor };
 
 enum class AssetKey : std::uint64_t {};
 
@@ -34,8 +29,7 @@ struct StreamKey {
 
 class RngHub {
 public:
-    constexpr explicit RngHub(Seed master) noexcept
-        : master_(master) {}
+    constexpr explicit RngHub(Seed master) noexcept : master_(master) {}
 
     /// A private engine for `key`. Pure function of (master seed, key): two hubs
     /// with the same master return identical engines for the same key.

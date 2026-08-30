@@ -1,7 +1,7 @@
 #ifndef MMS_MATH_RNG_COUNTER_BASED_ENGINE_HPP
 #define MMS_MATH_RNG_COUNTER_BASED_ENGINE_HPP
 
-/// \file 
+/// \file
 /// CounterBasedEngine: turns a BlockFunction policy (Philox, Threefry) into a
 /// std-style UniformRandomBitGenerator. Value semantics: a copy is a snapshot,
 /// discard() is O(1).
@@ -16,11 +16,10 @@
 
 namespace mms::math::rng {
 
-template <BlockFunction Block, unsigned Rounds>
-class CounterBasedEngine {
+template<BlockFunction Block, unsigned Rounds> class CounterBasedEngine {
 public:
-    using result_type = typename Block::result_type;
-    using key_type = typename Block::key_type;
+    using result_type = Block::result_type;
+    using key_type = Block::key_type;
     using counter_type = Counter<Block::counter_words>;
 
     static constexpr std::size_t block_size = Block::word_count;
@@ -30,9 +29,8 @@ public:
     constexpr explicit CounterBasedEngine(key_type key, counter_type counter = {}) noexcept
         : key_{key}, counter_{counter} {}
 
-    [[nodiscard]] static constexpr result_type min() noexcept {
-        return 0;
-    }
+    [[nodiscard]] static constexpr result_type min() noexcept { return result_type{0}; }
+
     [[nodiscard]] static constexpr result_type max() noexcept {
         return std::numeric_limits<result_type>::max();
     }
@@ -61,18 +59,18 @@ public:
         z -= avail;
         cursor_ = block_size;
         counter_.bump(static_cast<std::uint64_t>(z / block_size));
-        if (const auto rem = static_cast<std::uint64_t>(z % block_size); rem != 0) {
+        if (const auto rem = static_cast<std::size_t>(z % block_size); rem != 0) {
             buffer_ = Block::block(counter_.words, key_, Rounds);
             counter_.bump();
             cursor_ = rem;
         }
     }
 
-    [[nodiscard]] constexpr counter_type position() const noexcept {
-        return counter_;
-    }
+    /// Current counter position, for exact scenario replay / checkpoints.
+    [[nodiscard]] constexpr counter_type position() const noexcept { return counter_; }
 
-    friend constexpr bool operator==(const CounterBasedEngine&, const CounterBasedEngine&) = default;
+    friend constexpr bool operator==(const CounterBasedEngine&,
+                                     const CounterBasedEngine&) = default;
 
 private:
     key_type key_{};
