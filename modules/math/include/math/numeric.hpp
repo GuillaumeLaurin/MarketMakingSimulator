@@ -7,6 +7,7 @@
 /// (no Eigen, no other MMS::math header). The scalar helpers are constexpr and
 /// header-only; the span helpers are compiled into the library.
 
+#include <limits>
 #include <span>
 
 #include <math/math_export.hpp>
@@ -30,7 +31,11 @@ inline constexpr double default_abs_tol = 1e-14;
                                           double rel_tol = default_rel_tol,
                                           double abs_tol = default_abs_tol) noexcept {
     if (a == b) {
-        return true;
+        return true; // also covers matching infinities
+    }
+    constexpr double inf = std::numeric_limits<double>::infinity();
+    if (a == inf || a == -inf || b == inf || b == -inf) {
+        return false; // an infinite operand is close only to an equal one
     }
     const double diff = (a < b) ? (b - a) : (a - b);
     const double abs_a = (a < 0.0) ? -a : a;

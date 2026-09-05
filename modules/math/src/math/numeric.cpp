@@ -5,6 +5,7 @@
 /// real translation unit of MMS::math: it un-stubs the module and pins the
 /// C++20 toolchain configuration in compile_commands.json.
 
+#include <algorithm>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
@@ -37,10 +38,7 @@ double max_abs_diff(std::span<const double> a, std::span<const double> b) noexce
     }
     double worst = 0.0;
     for (std::size_t i = 0; i < a.size(); ++i) {
-        const double d = std::fabs(a[i] - b[i]);
-        if (d > worst) {
-            worst = d;
-        }
+        worst = std::max(worst, std::fabs(a[i] - b[i]));
     }
     return worst;
 }

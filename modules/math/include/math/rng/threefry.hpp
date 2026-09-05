@@ -38,12 +38,6 @@ struct ThreefryBlock {
     /// Apply \p rounds Threefry rounds. Threefry-4x64-20 means rounds == 20.
     [[nodiscard]] static constexpr counter_type
     block(counter_type ctr, key_type key, unsigned rounds) noexcept {
-        // Round-constant tables are indexed by a bounded loop counter: k is
-        // r % 8 (rot_0 / rot_1 hold 8 entries) and the key-schedule index is
-        // (s + i) % 5 (ks holds 5 entries). Both are provably in range, so the
-        // runtime array subscripts below are safe.
-        // NOLINTBEGIN(cppcoreguidelines-pro-bounds-constant-array-index)
-
         // Extended key schedule: 5 words, last = parity xor (xor of the key).
         const std::array<word_type, 5> ks = {
             key[0],
@@ -91,7 +85,6 @@ struct ThreefryBlock {
         }
 
         return counter_type{x0, x1, x2, x3};
-        // NOLINTEND(cppcoreguidelines-pro-bounds-constant-array-index)
     }
 };
 
