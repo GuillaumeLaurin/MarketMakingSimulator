@@ -45,7 +45,11 @@ share the conceptual name without triggering `-Wshadow`.
 
 ## 4. Headers
 
-* `#pragma once`, first line.
+* Include guard, not `#pragma once` (which is non-standard and not portably
+  guaranteed). The first two lines are `#ifndef <GUARD>` / `#define <GUARD>`, the
+  last is `#endif // <GUARD>`. The guard macro is the header path under
+  `include/` uppercased with `/` and `.` turned into `_`: `math/rng/philox.hpp`
+  becomes `MMS_MATH_RNG_PHILOX_HPP`.
 * Public headers live in `modules/<name>/include/<name>/`; private headers next
   to the sources in `modules/<name>/src/`. A public header must never include a
   private one.

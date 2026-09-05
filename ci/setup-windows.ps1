@@ -11,7 +11,9 @@ if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
 if (-not $env:VCPKG_ROOT -or -not (Test-Path (Join-Path $env:VCPKG_ROOT 'vcpkg.exe'))) {
     Write-Host '[ci] bootstrapping vcpkg into .\vcpkg'
     if (-not (Test-Path .\vcpkg)) {
-        git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg
+        # Full commit history (blobs fetched lazily) so vcpkg can resolve any
+        # builtin-baseline pinned in vcpkg.json; --depth 1 drops the baseline commit.
+        git clone --filter=blob:none https://github.com/microsoft/vcpkg.git vcpkg
     }
     & .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
     $root = (Resolve-Path .\vcpkg).Path

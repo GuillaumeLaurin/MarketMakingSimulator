@@ -128,6 +128,7 @@ $cpp = @'
       "compileCommands": "${workspaceFolder}/build/@@PRESET@@/compile_commands.json",
       "cStandard": "c17",
       "cppStandard": "c++20",
+      "compilerArgs": ["-std=c++20"],
       "intelliSenseMode": "@@MODE@@",
       "includePath": [
         "${workspaceFolder}/include",
@@ -178,6 +179,7 @@ $settings = @'
   "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "C_Cpp.default.compileCommands": "${workspaceFolder}/build/@@PRESET@@/compile_commands.json",
   "C_Cpp.default.cppStandard": "c++20",
+  "C_Cpp.default.compilerArgs": ["-std=c++20"],
   "C_Cpp.autoAddFileAssociations": false,
   "files.associations": {
     "*.in": "cmake",

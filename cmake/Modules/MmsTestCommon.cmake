@@ -39,7 +39,14 @@ function(mms_add_test name)
         ${ARG_LINK})
 
     if(COMMAND catch_discover_tests)
-        catch_discover_tests(${_target})
+        # Modules are shared libraries by default (BUILD_SHARED_LIBS=ON), and the
+        # test binary lives in out/test while the mms_<name>.dll it links lives in
+        # out/bin. DL_PATHS makes both the discovery step and ctest prepend
+        # out/bin to the loader path; PRE_TEST defers discovery to test time so a
+        # missing DLL never breaks the build.
+        catch_discover_tests(${_target}
+            DL_PATHS "${PROJECT_BINARY_DIR}/out/bin"
+            DISCOVERY_MODE PRE_TEST)
     else()
         add_test(NAME ${name} COMMAND ${_target})
     endif()

@@ -1,0 +1,20 @@
+# clangd (LLVM language server) configuration for MMS.
+#
+# clangd ignores c_cpp_properties.json and the C_Cpp.* settings; it has to be
+# told where the CMake compile database lives. clangd's auto-discovery only
+# looks for build/compile_commands.json, not build/<preset>/..., so the preset
+# build tree must be named explicitly. dev-mingw is the default preset (see
+# .vscode/settings.json and .vscode/setup_intellisense.ps1); change the path if
+# you configure a different one.
+CompileFlags:
+  CompilationDatabase: build/dev-mingw
+  # Fallback for headers not yet pulled in by any .cpp (skeleton phase): keep
+  # them parsed as C++20 so concepts, <concepts>, inline variables and nested
+  # namespace definitions resolve even before a translation unit includes them.
+  Add: [-std=c++20]
+  # The compile database is produced with g++. Strip GCC-only driver flags that
+  # clangd's bundled clang frontend does not recognise.
+  Remove:
+    - -fno-keep-inline-dllexport
+    - -mno-*
+    - -fno-keep-*

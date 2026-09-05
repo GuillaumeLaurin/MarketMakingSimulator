@@ -35,11 +35,23 @@ function(mms_collect_module_sources name src_out hdr_out)
     if(NOT _sources)
         set(_stub "${CMAKE_CURRENT_BINARY_DIR}/gen/${name}_placeholder.cpp")
         if(NOT EXISTS "${_stub}")
+            string(TOUPPER "${name}" _name_uc)
             file(WRITE "${_stub}"
                 "// Auto-generated: keeps the '${name}' module linkable until\n"
                 "// src/${name}/ has real code. Safe to leave; it disappears from the\n"
                 "// build as soon as a real .cpp exists.\n"
-                "namespace mms::${name}::detail { int _mms_${name}_placeholder = 0; }\n")
+                "//\n"
+                "// The dllexport gives MSVC an import library even while the module\n"
+                "// has no real API: a Windows DLL with zero exports produces no .lib,\n"
+                "// which breaks anything that links this module.\n"
+                "#if defined(_WIN32) && !defined(MMS_${_name_uc}_STATIC_DEFINE)\n"
+                "#  define MMS_${_name_uc}_PLACEHOLDER_EXPORT __declspec(dllexport)\n"
+                "#else\n"
+                "#  define MMS_${_name_uc}_PLACEHOLDER_EXPORT\n"
+                "#endif\n"
+                "namespace mms::${name}::detail {\n"
+                "MMS_${_name_uc}_PLACEHOLDER_EXPORT int placeholder = 0;\n"
+                "} // namespace mms::${name}::detail\n")
         endif()
         set(_sources "${_stub}")
     endif()
