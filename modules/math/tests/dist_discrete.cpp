@@ -27,6 +27,8 @@ namespace {
 using mms::math::dist::Bernoulli;
 using mms::math::dist::bernoulli;
 using mms::math::dist::canonical_double;
+using mms::math::dist::Discrete;
+using mms::math::dist::discrete;
 using mms::math::dist::Geometric;
 using mms::math::dist::geometric;
 using mms::math::dist::open_unit_double;
@@ -39,12 +41,15 @@ namespace rng = mms::math::rng;
 static_assert(std::is_same_v<Bernoulli::result_type, bool>);
 static_assert(std::is_same_v<Poisson::result_type, std::int64_t>);
 static_assert(std::is_same_v<Geometric::result_type, std::int64_t>);
+static_assert(std::is_same_v<Discrete::result_type, std::int64_t>);
 static_assert(Sampler<Bernoulli>);
 static_assert(Sampler<Poisson>);
 static_assert(Sampler<Geometric>);
+static_assert(Sampler<Discrete>);
 static_assert(Bernoulli::words_per_sample == 1);
 static_assert(Poisson::words_per_sample == 1);
 static_assert(Geometric::words_per_sample == 1);
+static_assert(Discrete::words_per_sample == 1);
 
 // Independent reimplementation of the Poisson CDF walk, for cross-checking.
 std::int64_t inverse_cdf_poisson(double mean, double u) {
@@ -318,4 +323,116 @@ TEST_CASE("geometric free function matches the sampler", "[dist][discrete][geome
     WordStub a{0x0246'8ACE'1357'9BDFULL};
     WordStub b{0x0246'8ACE'1357'9BDFULL};
     CHECK(geometric(a, 0.33) == Geometric{0.33}(b));
+}
+
+TEST_CASE("Discrete alias table: weights {1, 1, 2}", "[dist][discrete][discrete-sampler]") {
+    // Hand-built Vose table for n = 3, scaled = {0.75, 0.75, 1.5}:
+    //   prob  = {0.75, 0.75, 1.0}
+    //   alias = {2,    2,    2  }
+    // draw: scaled = u * 3, i = floor(scaled), frac = scaled - i,
+    //       return frac < prob[i] ? i : alias[i].
+    const std::vector<double> w{1.0, 1.0, 2.0};
+    const Discrete d{w};
+
+    WordStub u0{0};                                    // u = 0     -> i=0 frac=0     -> 0
+    WordStub u_half{1ULL << 63};                       // u = 0.5   -> i=1 frac=0.5   -> 1
+    WordStub u_bucket0_flip{5ULL << 60};               // u = 0.3125-> i=0 frac=0.9375-> alias 2
+    WordStub u_bucket1_flip{0xA000'0000'0000'0000ULL}; // u = 0.625 -> i=1 frac=0.875 -> alias 2
+    WordStub u_bucket2{3ULL << 62};                    // u = 0.75  -> i=2 prob=1.0   -> 2
+    WordStub u_top{~0ULL};                             // u ~ 1     -> i=2            -> 2
+
+    CHECK(d(u0) == 0);
+    CHECK(d(u_half) == 1);
+    CHECK(d(u_bucket0_flip) == 2);
+    CHECK(d(u_bucket1_flip) == 2);
+    CHECK(d(u_bucket2) == 2);
+    CHECK(d(u_top) == 2);
+    CHECK(u0.consumed() == 1);
+}
+
+TEST_CASE("Discrete accepts unnormalized weights and stays in range",
+          "[dist][discrete][discrete-sampler]") {
+    const rng::RngHub hub{rng::Seed{0xB33'0005ULL}};
+    auto engine =
+        hub.engine_for({.subsystem = rng::Subsystem::AdverseFlow, .asset = rng::AssetKey{15}});
+    const std::vector<double> w{3.0, 7.0, 11.0, 2.0, 5.0};
+    const Discrete d{w};
+    CHECK(d.size() == 5);
+
+    bool in_range = true;
+    for (int i = 0; i < 100'000; ++i) {
+        const std::int64_t k = d(engine);
+        in_range = in_range && (k >= 0) && (k < 5);
+    }
+    CHECK(in_range);
+}
+
+TEST_CASE("Discrete never draws a zero-weight category", "[dist][discrete][discrete-sampler]") {
+    const rng::RngHub hub{rng::Seed{0xB33'0006ULL}};
+    auto engine =
+        hub.engine_for({.subsystem = rng::Subsystem::Latency, .asset = rng::AssetKey{16}});
+    const std::vector<double> w{1.0, 0.0, 3.0, 0.0, 2.0};
+    const Discrete d{w};
+
+    bool skipped_zeros = true;
+    for (int i = 0; i < 100'000; ++i) {
+        const std::int64_t k = d(engine);
+        skipped_zeros = skipped_zeros && (k != 1) && (k != 3);
+    }
+    CHECK(skipped_zeros);
+}
+
+TEST_CASE("Discrete empirical frequencies track the weights",
+          "[dist][discrete][discrete-sampler]") {
+    const rng::RngHub hub{rng::Seed{0xB33'0007ULL}};
+    auto engine = hub.engine_for({.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{17}});
+    const std::vector<double> w{0.1, 0.2, 0.3, 0.4};
+    const Discrete d{w};
+
+    std::array<int, 4> hits{};
+    constexpr int n = 400'000;
+    for (int i = 0; i < n; ++i) {
+        const std::int64_t k = d(engine);
+        ++hits[static_cast<std::size_t>(k)];
+    }
+    bool close = true;
+    for (std::size_t j = 0; j < 4; ++j) {
+        const double freq = static_cast<double>(hits[j]) / n;
+        close = close && (std::abs(freq - w[j]) < 0.005);
+    }
+    CHECK(close);
+}
+
+TEST_CASE("Discrete with one category is a point mass", "[dist][discrete][discrete-sampler]") {
+    const std::vector<double> w{5.0};
+    const Discrete d{w};
+    WordStub stub{0, 1ULL << 63, ~0ULL};
+    CHECK(d(stub) == 0);
+    CHECK(d(stub) == 0);
+    CHECK(d(stub) == 0);
+}
+
+TEST_CASE("Discrete rejects degenerate weight vectors", "[dist][discrete][discrete-sampler]") {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::vector<double> empty;
+    const std::vector<double> negative{1.0, -0.5, 2.0};
+    const std::vector<double> all_zero{0.0, 0.0};
+    const std::vector<double> has_nan{1.0, nan};
+    const std::vector<double> has_inf{1.0, inf};
+    const std::vector<double> ok{1.0, 0.0, 2.0};
+
+    CHECK_THROWS_AS((Discrete{empty}), std::invalid_argument);
+    CHECK_THROWS_AS((Discrete{negative}), std::invalid_argument);
+    CHECK_THROWS_AS((Discrete{all_zero}), std::invalid_argument);
+    CHECK_THROWS_AS((Discrete{has_nan}), std::invalid_argument);
+    CHECK_THROWS_AS((Discrete{has_inf}), std::invalid_argument);
+    CHECK_NOTHROW((Discrete{ok}));
+}
+
+TEST_CASE("discrete free function matches the sampler", "[dist][discrete][discrete-sampler]") {
+    const std::vector<double> w{2.0, 3.0, 5.0};
+    WordStub a{0x1357'2468'ACE0'BDF9ULL};
+    WordStub b{0x1357'2468'ACE0'BDF9ULL};
+    CHECK(discrete(a, w) == Discrete{w}(b));
 }
