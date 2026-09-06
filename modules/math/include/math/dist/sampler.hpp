@@ -108,7 +108,7 @@ private:
             [](const void* src, void* dst) { ::new (dst) S(*static_cast<const S*>(src)); },
             [](void* src, void* dst) noexcept { ::new (dst) S(std::move(*static_cast<S*>(src))); },
             [](void* p) noexcept { std::destroy_at(static_cast<S*>(p)); },
-            [](const void* p, rng::RngEngine& g, std::size_t n) {
+            []([[maybe_unused]] const void* p, rng::RngEngine& g, std::size_t n) {
                 if constexpr (S::words_per_sample >= 0) {
                     g.discard(static_cast<unsigned long long>(n) *
                               static_cast<unsigned long long>(S::words_per_sample));
