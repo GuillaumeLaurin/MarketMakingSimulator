@@ -40,6 +40,11 @@ TEST_CASE("<math/dist.hpp> exposes the whole dist layer", "[dist][umbrella]") {
     CHECK(Exponential{1.0}(engine) > 0.0);
     (void)Bernoulli{0.5}(engine);
     CHECK(Poisson{3.0}(engine) >= 0);
+    CHECK(Geometric{0.4}(engine) >= 0);
+    const std::array<double, 3> weights{1.0, 2.0, 3.0};
+    CHECK(Discrete{std::span<const double>{weights}}(engine) >= 0);
+    CHECK(StandardGamma{2.0}(engine) > 0.0);
+    CHECK(Gamma{0.7, 1.5}(engine) > 0.0);
 
     // sampler.hpp batch helpers
     std::array<double, 4> out{};
@@ -55,4 +60,7 @@ TEST_CASE("<math/dist.hpp> exposes the whole dist layer", "[dist][umbrella]") {
     CHECK(exponential(engine, 2.0) > 0.0);
     (void)bernoulli(engine, 0.5);
     CHECK(poisson(engine, 4.0) >= 0);
+    CHECK(geometric(engine, 0.3) >= 0);
+    CHECK(discrete(engine, std::span<const double>{weights}) >= 0);
+    CHECK(gamma(engine, 3.0, 0.5) > 0.0);
 }

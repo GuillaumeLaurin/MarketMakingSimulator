@@ -9,7 +9,10 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <span>
 #include <stdexcept>
+#include <vector>
 
 #include <math/dist/primitives.hpp>
 
@@ -76,12 +79,131 @@ private:
     double p0_;
 };
 
+/// Geometric(p): number of failures before first success, support
+/// {0, 1, 2, ...}, P(k) = (1 - p)^k * p. Inverse CDF, one word, no rejection.
+/// A very small p can produce a very large k; the result sturates at
+/// INT64_MAX rather than overflowing.
+class Geometric {
+public:
+    using result_type = std::int64_t;
+    static constexpr int words_per_sample = 1;
+
+    explicit Geometric(double p) : log_q_(std::log1p(-p)), p_(p) {
+        if (!std::isfinite(p) || p <= 0.0 || p > 1.0) {
+            throw std::invalid_argument("Geometric: require 0 < p <= 1");
+        }
+    }
+
+    template<Uint64Source G> [[nodiscard]] result_type operator()(G& g) const {
+        // p == 1 -> log_q_ == -inf -> x == 0. Otherwise x >= 0
+        const double x = std::floor(std::log(open_unit_double(g)) / log_q_);
+        if (x >= 9223372036854774784.0) {
+            return std::numeric_limits<std::int64_t>::max();
+        }
+        return static_cast<result_type>(x);
+    }
+
+    [[nodiscard]] constexpr double p() const noexcept { return p_; }
+
+private:
+    double log_q_;
+    double p_;
+};
+
+/// Discrete(weights): a categorical on {0, ..., n-1} with P(i) proportional to
+/// weights[i]. Vose alias table built in the constructor, O(1) per draw. One
+/// engine word: the same uniform picks the index (floor(u * n)) and the coin
+/// (its fractional part), so consumption is fixed. Coin resolution is
+/// 53 - log2(n) bits, ample for any realistic n.
+class Discrete {
+public:
+    using result_type = std::int64_t;
+    static constexpr int words_per_sample = 1;
+
+    explicit Discrete(std::span<const double> weights)
+        : prob_(weights.size()), alias_(weights.size()) {
+        const std::size_t n = weights.size();
+
+        if (n == 0) {
+            throw std::invalid_argument("Discrete: weights must be non-empty");
+        }
+
+        double total = 0.0;
+        for (const double w : weights) {
+            if (!std::isfinite(w) || w < 0.0) {
+                throw std::invalid_argument("Discrete: weights must be finite and non-negative");
+            }
+            total += w;
+        }
+
+        if (!(total > 0.0)) {
+            throw std::invalid_argument("Discrete: weights must sum to a positive value");
+        }
+
+        std::vector<double> scaled(n);
+        std::vector<std::size_t> small;
+        std::vector<std::size_t> large;
+
+        for (std::size_t i = 0; i < n; ++i) {
+            scaled[i] = (weights[i] / total) * static_cast<double>(n);
+            (scaled[i] < 1.0 ? small : large).push_back(i);
+        }
+
+        while (!small.empty() && !large.empty()) {
+            const std::size_t s = small.back();
+            small.pop_back();
+            const std::size_t l = large.back();
+            large.pop_back();
+            prob_[s] = scaled[s];
+            alias_[s] = static_cast<std::int64_t>(l);
+            scaled[l] -= 1.0 - scaled[s];
+            (scaled[l] < 1.0 ? small : large).push_back(l);
+        }
+
+        for (const std::size_t i : large) {
+            prob_[i] = 1.0;
+            alias_[i] = static_cast<std::int64_t>(i);
+        }
+        for (const std::size_t i : small) {
+            prob_[i] = 1.0;
+            alias_[i] = static_cast<std::int64_t>(i);
+        }
+    }
+
+    template<Uint64Source G> [[nodiscard]] result_type operator()(G& g) const {
+        const double scaled = canonical_double(g) * static_cast<double>(prob_.size());
+        auto i = static_cast<std::size_t>(scaled);
+        if (i >= prob_.size()) {
+            i = prob_.size() - 1;
+        }
+        const double frac = scaled - static_cast<double>(i);
+        return frac < prob_[i] ? static_cast<result_type>(i) : alias_[i];
+    }
+
+    [[nodiscard]] std::int64_t size() const noexcept {
+        return static_cast<std::int64_t>(prob_.size());
+    }
+
+private:
+    std::vector<double> prob_;
+    std::vector<std::int64_t> alias_;
+};
+
 template<Uint64Source G> [[nodiscard]] inline bool bernoulli(G& g, double p) {
     return Bernoulli{p}(g);
 }
 
 template<Uint64Source G> [[nodiscard]] inline std::int64_t poisson(G& g, double mean) {
     return Poisson{mean}(g);
+}
+
+template<Uint64Source G> [[nodiscard]] inline std::int64_t geometric(G& g, double p) {
+    return Geometric{p}(g);
+}
+
+template<Uint64Source G>
+[[nodiscard]] inline std::int64_t discrete(G& g, std::span<const double> weights) {
+    return Discrete{weights}(g);
 }
 
 } // namespace mms::math::dist
