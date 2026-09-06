@@ -38,7 +38,7 @@ public:
     /// Bytes of inline storage. Sized for the largest built-in sampler
     /// (Discrete: two std::vector members). A sampler that does not fit trips a
     /// static_assert in the constructor.
-    static constexpr std::size_t buffer_capacity = 48;
+    static constexpr std::size_t buffer_capacity = 64;
 
     template<Sampler S> explicit AnySampler(S sampler) : vtable_(&vtable_for<S>) {
         static_assert(sizeof(S) <= buffer_capacity, "sampler exceeds AnySampler buffer_capacity");
