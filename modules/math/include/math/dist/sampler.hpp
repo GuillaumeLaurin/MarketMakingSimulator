@@ -122,7 +122,7 @@ private:
             S::words_per_sample,
         };
         return table;
-    };
+    }
 
     alignas(std::max_align_t) std::array<std::byte, buffer_capacity> storage_{};
     const VTable* vtable_;
