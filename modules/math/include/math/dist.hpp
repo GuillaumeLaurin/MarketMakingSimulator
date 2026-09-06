@@ -6,5 +6,6 @@
 
 #include <math/dist/primitives.hpp>
 #include <math/dist/traits.hpp>
+#include <math/dist/uniform.hpp>
 
 #endif // MMS_MATH_DIST_HPP
