@@ -23,13 +23,12 @@ public:
     static constexpr int words_per_sample = 1;
 
     explicit Bernoulli(double p) : p_(p) {
-        if (!(p >= 0.0 && p <= 1.0)) {
+        if (!std::isfinite(p) || p < 0.0 || p > 1.0) {
             throw std::invalid_argument("Bernoulli: require 0 <= p <= 1");
         }
     }
 
-    template <Uint64Source G>
-    [[nodiscard]] result_type operator()(G& g) const {
+    template<Uint64Source G> [[nodiscard]] result_type operator()(G& g) const {
         return canonical_double(g) < p_;
     }
 
@@ -53,8 +52,7 @@ public:
         }
     }
 
-    template <Uint64Source G>
-    [[nodiscard]] result_type operator()(G& g) const {
+    template<Uint64Source G> [[nodiscard]] result_type operator()(G& g) const {
         const double u = canonical_double(g);
         double cdf = p0_;
         double term = p0_;
@@ -70,7 +68,7 @@ public:
     [[nodiscard]] constexpr double mean() const noexcept { return mean_; }
 
 private:
-    // Loop guard: only reached if rounding keeps cdf just below u. With 
+    // Loop guard: only reached if rounding keeps cdf just below u. With
     // mean <= 30 a real draw never approches this.
     static constexpr std::int64_t kmax = 512;
 
@@ -78,13 +76,11 @@ private:
     double p0_;
 };
 
-template <Uint64Source G>
-[[nodiscard]] inline bool bernoulli(G& g, double p) {
+template<Uint64Source G> [[nodiscard]] inline bool bernoulli(G& g, double p) {
     return Bernoulli{p}(g);
 }
 
-template <Uint64Source G>
-[[nodiscard]] inline std::int64_t poisson(G& g, double mean) {
+template<Uint64Source G> [[nodiscard]] inline std::int64_t poisson(G& g, double mean) {
     return Poisson{mean}(g);
 }
 

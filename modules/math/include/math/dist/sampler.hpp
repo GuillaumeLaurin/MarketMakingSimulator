@@ -16,23 +16,22 @@
 namespace mms::math::dist {
 
 /// A Uint64Source whose position can be advanced in O(1).
-template <class G>
-concept JumpableUint64Source = Uint64Source<G> && requires(G& g, unsigned long long z) {
-    g.discard(z);
-};
+template<class G>
+concept JumpableUint64Source =
+    Uint64Source<G> && requires(G& g, unsigned long long z) { g.discard(z); };
 
 /// Draw out.size() variates into out.
-template <Sampler S, Uint64Source G>
+template<Sampler S, Uint64Source G>
 void generate(const S& sampler, G& g, std::span<typename S::result_type> out) {
     for (auto& x : out) {
         x = sampler(g);
     }
 }
 
-/// Skip n draws. Defined only for fixed-consumption samplers: advances the 
+/// Skip n draws. Defined only for fixed-consumption samplers: advances the
 /// engine by exaclty n * words_per_sample words, the distance n calls to
 /// operator() would cover.
-template <Sampler S, JumpableUint64Source G>
+template<Sampler S, JumpableUint64Source G>
     requires(S::words_per_sample >= 0)
 void discard(const S& /*sampler*/, G& g, std::size_t n) {
     g.discard(static_cast<unsigned long long>(n) *

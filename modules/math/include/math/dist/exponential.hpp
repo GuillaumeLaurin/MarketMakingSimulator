@@ -25,20 +25,19 @@ public:
         }
     }
 
-    template <Uint64Source G>
-    [[nodiscard]] result_type operator()(G& g) const {
+    template<Uint64Source G> [[nodiscard]] result_type operator()(G& g) const {
         return -std::log(open_unit_double(g)) / rate_;
     }
 
     [[nodiscard]] constexpr double rate() const noexcept { return rate_; }
+
     [[nodiscard]] constexpr double mean() const noexcept { return 1.0 / rate_; }
 
 private:
     double rate_;
 };
 
-template <Uint64Source G>
-[[nodiscard]] inline double exponential(G& g, double rate) {
+template<Uint64Source G> [[nodiscard]] inline double exponential(G& g, double rate) {
     return Exponential{rate}(g);
 }
 

@@ -17,12 +17,12 @@ namespace mms::math::dist {
 ///     - words_per_sample      : static engine-word cost; -1 means variable
 /// RngEngine is used as the concrete witness, so modelling Sampler also proves
 /// the sampler compiles against the production engine.
-template <class S>
-concept Sampler = std::is_arithmetic_v<typename S::result_type> &&
-                  requires(const S& s, rng::RngEngine& g) {
-                    { s(g) } -> std::same_as<typename S::result_type>;
-                    { S::words_per_sample } -> std::convertible_to<int>;
-                  };
+template<class S>
+concept Sampler =
+    std::is_arithmetic_v<typename S::result_type> && requires(const S& s, rng::RngEngine& g) {
+        { s(g) } -> std::same_as<typename S::result_type>;
+        { S::words_per_sample } -> std::convertible_to<int>;
+    };
 
 } // namespace mms::math::dist
 
