@@ -10,6 +10,7 @@
 #include <array>
 #include <concepts>
 #include <cstddef>
+#include <memory>
 #include <new>
 #include <span>
 #include <type_traits>
@@ -40,7 +41,7 @@ public:
     /// static_assert in the constructor.
     static constexpr std::size_t buffer_capacity = 64;
 
-    template<Sampler S> explicit AnySampler(S sampler) : vtable_(&vtable_for<S>) {
+    template<Sampler S> explicit AnySampler(S sampler) : vtable_(&vtable_for<S>()) {
         static_assert(sizeof(S) <= buffer_capacity, "sampler exceeds AnySampler buffer_capacity");
         static_assert(alignof(S) <= alignof(std::max_align_t),
                       "sampler over-aligned for AnySampler");
@@ -101,24 +102,26 @@ private:
         int words;
     };
 
-    template<class S>
-    static constexpr VTable vtable_for{
-        [](const void* p, rng::RngEngine& g) -> T { return (*static_cast<const S*>(p))(g); },
-        [](const void* src, void* dst) { ::new (dst) S(*static_cast<const S*>(src)); },
-        [](void* src, void* dst) noexcept { ::new (dst) S(std::move(*static_cast<S*>(src))); },
-        [](void* p) noexcept { static_cast<S*>(p)->~S(); },
-        [](const void* p, rng::RngEngine& g, std::size_t n) {
-            if constexpr (S::words_per_sample >= 0) {
-                g.discard(static_cast<unsigned long long>(n) *
-                          static_cast<unsigned long long>(S::words_per_sample));
-            } else {
-                const auto& s = *static_cast<const S*>(p);
-                for (std::size_t i = 0; i < n; ++i) {
-                    (void)s(g);
+    template<class S> static const VTable& vtable_for() noexcept {
+        static constexpr VTable table{
+            [](const void* p, rng::RngEngine& g) -> T { return (*static_cast<const S*>(p))(g); },
+            [](const void* src, void* dst) { ::new (dst) S(*static_cast<const S*>(src)); },
+            [](void* src, void* dst) noexcept { ::new (dst) S(std::move(*static_cast<S*>(src))); },
+            [](void* p) noexcept { std::destroy_at(static_cast<S*>(p)); },
+            [](const void* p, rng::RngEngine& g, std::size_t n) {
+                if constexpr (S::words_per_sample >= 0) {
+                    g.discard(static_cast<unsigned long long>(n) *
+                              static_cast<unsigned long long>(S::words_per_sample));
+                } else {
+                    const auto& s = *static_cast<const S*>(p);
+                    for (std::size_t i = 0; i < n; ++i) {
+                        (void)s(g);
+                    }
                 }
-            }
-        },
-        S::words_per_sample,
+            },
+            S::words_per_sample,
+        };
+        return table;
     };
 
     alignas(std::max_align_t) std::array<std::byte, buffer_capacity> storage_{};
