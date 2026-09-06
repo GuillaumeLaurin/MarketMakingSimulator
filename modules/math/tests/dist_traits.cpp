@@ -66,7 +66,7 @@ struct NoWordCount {
 
 struct WrongReturnType {
     using result_type = double;
-    static constexpr int words_per_sample = 1;
+    [[maybe_unused]] static constexpr int words_per_sample = 1;
 
     int operator()(Uint64Source auto& g) const { // not result_type
         return static_cast<int>(mms::math::dist::uniform_bits(g));
@@ -75,14 +75,14 @@ struct WrongReturnType {
 
 struct NonArithmeticResult {
     using result_type = std::string;
-    static constexpr int words_per_sample = 1;
+    [[maybe_unused]] static constexpr int words_per_sample = 1;
 
     result_type operator()(Uint64Source auto& /*g*/) const { return {}; }
 };
 
 struct NotCallable {
     using result_type = double;
-    static constexpr int words_per_sample = 1;
+    [[maybe_unused]] static constexpr int words_per_sample = 1;
 };
 
 // --- the contract -----------------------------------------------------------

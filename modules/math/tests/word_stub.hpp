@@ -26,7 +26,7 @@ struct FixedWord {
 
     [[nodiscard]] static constexpr result_type max() noexcept { return ~result_type{0}; }
 
-    [[nodiscard]] constexpr result_type operator()() noexcept { return value; }
+    [[nodiscard]] constexpr result_type operator()() const noexcept { return value; }
 };
 
 /// Replays a fixed list of words, then throws std::out_of_range. Tracks how many

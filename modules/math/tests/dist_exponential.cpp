@@ -3,9 +3,11 @@
 /// -log(open_unit_double(g)) / rate; shape (mean, variance, median) and the
 /// memoryless property are checked over a real engine stream.
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -33,7 +35,7 @@ static_assert(Exponential::words_per_sample == 1);
 } // namespace
 
 TEST_CASE("Exponential is exactly -log(open_unit_double) / rate", "[dist][exponential]") {
-    const std::uint64_t words[] = {
+    const std::array<std::uint64_t, 5> words{
         0ULL, 1ULL, 0x8000'0000'0000'0000ULL, 0xABCD'1234'5678'9ABCULL, ~0ULL};
     bool matches = true;
     for (const std::uint64_t w : words) {
@@ -77,7 +79,7 @@ TEST_CASE("Exponential rejects a non-finite or non-positive rate", "[dist][expon
 }
 
 TEST_CASE("Exponential has the right mean, variance and median", "[dist][exponential]") {
-    rng::RngHub hub{rng::Seed{0xE47D'0001ULL}};
+    const rng::RngHub hub{rng::Seed{0xE47D'0001ULL}};
     auto engine = hub.engine_for({.subsystem = rng::Subsystem::Latency, .asset = rng::AssetKey{9}});
     const Exponential d{0.5}; // mean 2, variance 4, median 2 * ln 2
 
@@ -86,7 +88,7 @@ TEST_CASE("Exponential has the right mean, variance and median", "[dist][exponen
     double sum_sq = 0.0;
     int above_median = 0;
     bool all_positive = true;
-    const double median = std::log(2.0) / 0.5;
+    const double median = std::numbers::ln2 / 0.5;
     for (int i = 0; i < n; ++i) {
         const double x = d(engine);
         all_positive = all_positive && (x > 0.0);
@@ -104,7 +106,7 @@ TEST_CASE("Exponential has the right mean, variance and median", "[dist][exponen
 }
 
 TEST_CASE("Exponential is memoryless", "[dist][exponential]") {
-    rng::RngHub hub{rng::Seed{0xE47D'0002ULL}};
+    const rng::RngHub hub{rng::Seed{0xE47D'0002ULL}};
     auto engine = hub.engine_for({.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{10}});
     const Exponential d{1.0};
 

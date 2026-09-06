@@ -91,7 +91,7 @@ TEST_CASE("uniform_bits replays the engine word for word", "[dist][primitives]")
 }
 
 TEST_CASE("canonical_double stays in [0, 1) over a real engine stream", "[dist][primitives]") {
-    mms::math::rng::RngHub hub{mms::math::rng::Seed{0xC0FFEEULL}};
+    const mms::math::rng::RngHub hub{mms::math::rng::Seed{0xC0FFEEULL}};
     auto engine = hub.engine_for(
         {.subsystem = mms::math::rng::Subsystem::Price, .asset = mms::math::rng::AssetKey{1}});
 
@@ -109,7 +109,7 @@ TEST_CASE("canonical_double stays in [0, 1) over a real engine stream", "[dist][
 
 TEST_CASE("open_unit_double stays strictly inside (0, 1) over a real engine stream",
           "[dist][primitives]") {
-    mms::math::rng::RngHub hub{mms::math::rng::Seed{0x1234'5678ULL}};
+    const mms::math::rng::RngHub hub{mms::math::rng::Seed{0x1234'5678ULL}};
     auto engine = hub.engine_for({.subsystem = mms::math::rng::Subsystem::AdverseFlow,
                                   .asset = mms::math::rng::AssetKey{2}});
 

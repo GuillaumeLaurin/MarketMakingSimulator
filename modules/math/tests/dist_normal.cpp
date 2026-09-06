@@ -6,6 +6,7 @@
 /// engine stream for shape.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -98,7 +99,7 @@ TEST_CASE("probit returns NaN outside (0, 1) and never throws", "[dist][normal][
 }
 
 TEST_CASE("StandardNormal is exactly probit composed with open_unit_double", "[dist][normal]") {
-    const std::uint64_t words[] = {
+    const std::array<std::uint64_t, 5> words{
         0ULL, 1ULL, 0x8000'0000'0000'0000ULL, 0xDEAD'BEEF'FEED'FACEULL, ~0ULL};
     bool matches = true;
     for (const std::uint64_t w : words) {
@@ -139,7 +140,7 @@ TEST_CASE("Normal rejects non-finite mu or sigma <= 0", "[dist][normal]") {
 }
 
 TEST_CASE("StandardNormal has the right shape over a real engine stream", "[dist][normal]") {
-    rng::RngHub hub{rng::Seed{0x5EED'1234ULL}};
+    const rng::RngHub hub{rng::Seed{0x5EED'1234ULL}};
     auto engine = hub.engine_for({.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{7}});
     const StandardNormal z;
 
@@ -171,7 +172,7 @@ TEST_CASE("StandardNormal has the right shape over a real engine stream", "[dist
 }
 
 TEST_CASE("Normal shifts and scales the standard shape", "[dist][normal]") {
-    rng::RngHub hub{rng::Seed{0x5EED'ABCDULL}};
+    const rng::RngHub hub{rng::Seed{0x5EED'ABCDULL}};
     auto engine =
         hub.engine_for({.subsystem = rng::Subsystem::AdverseFlow, .asset = rng::AssetKey{8}});
     const Normal d{10.0, 2.0};

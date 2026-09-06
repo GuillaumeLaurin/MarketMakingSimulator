@@ -82,7 +82,7 @@ TEST_CASE("UniformInt rejects lo > hi", "[dist][uniform]") {
 }
 
 TEST_CASE("UniformInt covers its range roughly uniformly", "[dist][uniform]") {
-    rng::RngHub hub{rng::Seed{0xD1CEULL}};
+    const rng::RngHub hub{rng::Seed{0xD1CEULL}};
     auto engine =
         hub.engine_for({.subsystem = rng::Subsystem::AdverseFlow, .asset = rng::AssetKey{3}});
     const UniformInt die{1, 6};
@@ -108,7 +108,7 @@ TEST_CASE("UniformInt covers its range roughly uniformly", "[dist][uniform]") {
 }
 
 TEST_CASE("UniformInt spans a wide range without escaping it", "[dist][uniform]") {
-    rng::RngHub hub{rng::Seed{0xBEEF'CAFEULL}};
+    const rng::RngHub hub{rng::Seed{0xBEEF'CAFEULL}};
     auto engine = hub.engine_for({.subsystem = rng::Subsystem::Latency, .asset = rng::AssetKey{5}});
     const UniformInt u{0, 999};
 
@@ -175,7 +175,7 @@ TEST_CASE("UniformReal with lo == hi is a point mass", "[dist][uniform]") {
 }
 
 TEST_CASE("UniformReal fills [lo, hi) with the right mean and variance", "[dist][uniform]") {
-    rng::RngHub hub{rng::Seed{0xA11CEULL}};
+    const rng::RngHub hub{rng::Seed{0xA11CEULL}};
     auto engine = hub.engine_for({.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{4}});
     const UniformReal u{2.0, 5.0};
 

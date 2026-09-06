@@ -5,6 +5,7 @@
 /// CDF inversion, pinned against an independent reimplementation of the walk and
 /// against hand vectors, then checked for shape over a real engine stream.
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -87,7 +88,7 @@ TEST_CASE("Bernoulli rejects p outside [0, 1]", "[dist][discrete][bernoulli]") {
 
 TEST_CASE("Bernoulli matches its probability over a real engine stream",
           "[dist][discrete][bernoulli]") {
-    rng::RngHub hub{rng::Seed{0xB33'0001ULL}};
+    const rng::RngHub hub{rng::Seed{0xB33'0001ULL}};
     auto engine =
         hub.engine_for({.subsystem = rng::Subsystem::AdverseFlow, .asset = rng::AssetKey{11}});
     const Bernoulli d{0.3};
@@ -106,32 +107,31 @@ TEST_CASE("bernoulli free function matches the sampler", "[dist][discrete][berno
     CHECK(bernoulli(a, 0.42) == Bernoulli{0.42}(b));
 }
 
-TEST_CASE("Poisson inverts the CDF of one uniform", "[dist][discrete][poisson]") {
-    SECTION("hand vectors") {
-        WordStub zero{0}; // u == 0.0 -> k == 0 for any mean
-        CHECK(Poisson{5.0}(zero) == 0);
-        WordStub half{1ULL << 63}; // u == 0.5; F(0) = e^-1 ~ 0.368 < 0.5 <= F(1)
-        CHECK(Poisson{1.0}(half) == 1);
-    }
-    SECTION("against an independent walk") {
-        const std::uint64_t words[] = {0ULL,
-                                       1ULL << 60,
-                                       1ULL << 62,
-                                       1ULL << 63,
-                                       0xC000'0000'0000'0000ULL,
-                                       0xFFF0'0000'0000'0000ULL,
-                                       ~0ULL};
-        bool matches = true;
-        for (const std::uint64_t w : words) {
-            for (const double mean : {0.5, 3.0, 12.0}) {
-                WordStub a{w};
-                WordStub b{w};
-                matches =
-                    matches && (Poisson{mean}(a) == inverse_cdf_poisson(mean, canonical_double(b)));
-            }
+TEST_CASE("Poisson inverts the CDF of one uniform: hand vectors", "[dist][discrete][poisson]") {
+    WordStub zero{0}; // u == 0.0 -> k == 0 for any mean
+    CHECK(Poisson{5.0}(zero) == 0);
+    WordStub half{1ULL << 63}; // u == 0.5; F(0) = e^-1 ~ 0.368 < 0.5 <= F(1)
+    CHECK(Poisson{1.0}(half) == 1);
+}
+
+TEST_CASE("Poisson matches an independent CDF walk", "[dist][discrete][poisson]") {
+    const std::array<std::uint64_t, 7> words{0ULL,
+                                             1ULL << 60,
+                                             1ULL << 62,
+                                             1ULL << 63,
+                                             0xC000'0000'0000'0000ULL,
+                                             0xFFF0'0000'0000'0000ULL,
+                                             ~0ULL};
+    bool matches = true;
+    for (const std::uint64_t w : words) {
+        for (const double mean : {0.5, 3.0, 12.0}) {
+            WordStub a{w};
+            WordStub b{w};
+            matches =
+                matches && (Poisson{mean}(a) == inverse_cdf_poisson(mean, canonical_double(b)));
         }
-        CHECK(matches);
     }
+    CHECK(matches);
 }
 
 TEST_CASE("Poisson draws one word whatever the count it returns", "[dist][discrete][poisson]") {
@@ -158,7 +158,7 @@ TEST_CASE("Poisson rejects mean outside (0, 30]", "[dist][discrete][poisson]") {
 }
 
 TEST_CASE("Poisson has mean == variance over a real engine stream", "[dist][discrete][poisson]") {
-    rng::RngHub hub{rng::Seed{0xB33'0002ULL}};
+    const rng::RngHub hub{rng::Seed{0xB33'0002ULL}};
     auto engine =
         hub.engine_for({.subsystem = rng::Subsystem::Latency, .asset = rng::AssetKey{12}});
     const Poisson d{4.0};
@@ -186,7 +186,7 @@ TEST_CASE("Poisson has mean == variance over a real engine stream", "[dist][disc
 }
 
 TEST_CASE("Poisson works right up against the mean cap", "[dist][discrete][poisson]") {
-    rng::RngHub hub{rng::Seed{0xB33'0003ULL}};
+    const rng::RngHub hub{rng::Seed{0xB33'0003ULL}};
     auto engine = hub.engine_for({.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{13}});
     const Poisson d{25.0};
 
