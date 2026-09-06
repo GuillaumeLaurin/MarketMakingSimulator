@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 
 #include <math/dist/primitives.hpp>
@@ -76,12 +77,47 @@ private:
     double p0_;
 };
 
+/// Geometric(p): number of failures before first success, support
+/// {0, 1, 2, ...}, P(k) = (1 - p)^k * p. Inverse CDF, one word, no rejection.
+/// A very small p can produce a very large k; the result sturates at
+/// INT64_MAX rather than overflowing.
+class Geometric {
+public:
+    using result_type = std::int64_t;
+    static constexpr int words_per_sample = 1;
+
+    explicit Geometric(double p) : log_q_(std::log1p(-p)), p_(p) {
+        if (!std::isfinite(p) || p <= 0.0 || p > 1.0) {
+            throw std::invalid_argument("Geometric: require 0 < p <= 1");
+        }
+    }
+
+    template<Uint64Source G> [[nodiscard]] result_type operator()(G& g) const {
+        // p == 1 -> log_q_ == -inf -> x == 0. Otherwise x >= 0
+        const double x = std::floor(std::log(open_unit_double(g)) / log_q_);
+        if (x >= 9223372036854774784.0) {
+            return std::numeric_limits<std::int64_t>::max();
+        }
+        return static_cast<result_type>(x);
+    }
+
+    [[nodiscard]] constexpr double p() const noexcept { return p_; }
+
+private:
+    double log_q_;
+    double p_;
+};
+
 template<Uint64Source G> [[nodiscard]] inline bool bernoulli(G& g, double p) {
     return Bernoulli{p}(g);
 }
 
 template<Uint64Source G> [[nodiscard]] inline std::int64_t poisson(G& g, double mean) {
     return Poisson{mean}(g);
+}
+
+template<Uint64Source G> [[nodiscard]] inline std::int64_t geometric(G& g, double p) {
+    return Geometric{p}(g);
 }
 
 } // namespace mms::math::dist
