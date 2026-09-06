@@ -36,10 +36,12 @@ consteval double canon(std::uint64_t w) {
     FixedWord g{w};
     return canonical_double(g);
 }
+
 consteval double openu(std::uint64_t w) {
     FixedWord g{w};
     return open_unit_double(g);
 }
+
 consteval std::uint64_t bits(std::uint64_t w) {
     FixedWord g{w};
     return uniform_bits(g);

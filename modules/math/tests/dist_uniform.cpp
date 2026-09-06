@@ -22,10 +22,10 @@
 namespace {
 
 using mms::math::dist::Sampler;
-using mms::math::dist::UniformInt;
-using mms::math::dist::UniformReal;
 using mms::math::dist::uniform_int;
 using mms::math::dist::uniform_real;
+using mms::math::dist::UniformInt;
+using mms::math::dist::UniformReal;
 using mms::math::testing::FixedWord;
 using mms::math::testing::WordStub;
 namespace rng = mms::math::rng;
@@ -48,7 +48,8 @@ consteval std::int64_t int_draw(std::int64_t lo, std::int64_t hi, std::uint64_t 
 static_assert(int_draw(0, 9, 0) == 0);
 static_assert(int_draw(0, 9, ~0ULL) == 9, "word just below 2^64 maps to the top bucket");
 static_assert(int_draw(0, 9, 1ULL << 63) == 5, "half of 2^64 maps to floor(10/2)");
-static_assert(int_draw(0, 9, (1ULL << 63) + (1ULL << 62)) == 7, "three quarters maps to floor(7.5)");
+static_assert(int_draw(0, 9, (1ULL << 63) + (1ULL << 62)) == 7,
+              "three quarters maps to floor(7.5)");
 
 // same offsets, shifted by a negative lo
 static_assert(int_draw(-5, 5, 0) == -5);

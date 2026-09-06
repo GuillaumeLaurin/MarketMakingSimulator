@@ -21,6 +21,7 @@ using mms::math::dist::Uint64Source;
 struct DoubleSampler {
     using result_type = double;
     static constexpr int words_per_sample = 1;
+
     result_type operator()(Uint64Source auto& g) const {
         return mms::math::dist::canonical_double(g);
     }
@@ -29,6 +30,7 @@ struct DoubleSampler {
 struct IntSampler {
     using result_type = std::int64_t;
     static constexpr int words_per_sample = 1;
+
     result_type operator()(Uint64Source auto& g) const {
         return static_cast<std::int64_t>(mms::math::dist::uniform_bits(g));
     }
@@ -37,6 +39,7 @@ struct IntSampler {
 struct BoolSampler {
     using result_type = bool;
     static constexpr int words_per_sample = 1;
+
     result_type operator()(Uint64Source auto& g) const {
         return mms::math::dist::canonical_double(g) < 0.5;
     }
@@ -45,6 +48,7 @@ struct BoolSampler {
 struct VariableCostSampler {
     using result_type = double;
     static constexpr int words_per_sample = -1; // rejection based
+
     result_type operator()(Uint64Source auto& g) const {
         return mms::math::dist::canonical_double(g);
     }
@@ -54,6 +58,7 @@ struct VariableCostSampler {
 
 struct NoWordCount {
     using result_type = double;
+
     result_type operator()(Uint64Source auto& g) const {
         return mms::math::dist::canonical_double(g);
     }
@@ -62,6 +67,7 @@ struct NoWordCount {
 struct WrongReturnType {
     using result_type = double;
     static constexpr int words_per_sample = 1;
+
     int operator()(Uint64Source auto& g) const { // not result_type
         return static_cast<int>(mms::math::dist::uniform_bits(g));
     }
@@ -70,6 +76,7 @@ struct WrongReturnType {
 struct NonArithmeticResult {
     using result_type = std::string;
     static constexpr int words_per_sample = 1;
+
     result_type operator()(Uint64Source auto& /*g*/) const { return {}; }
 };
 

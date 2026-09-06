@@ -23,7 +23,9 @@ struct FixedWord {
     result_type value = 0;
 
     [[nodiscard]] static constexpr result_type min() noexcept { return 0; }
+
     [[nodiscard]] static constexpr result_type max() noexcept { return ~result_type{0}; }
+
     [[nodiscard]] constexpr result_type operator()() noexcept { return value; }
 };
 
@@ -34,9 +36,11 @@ public:
     using result_type = std::uint64_t;
 
     WordStub(std::initializer_list<std::uint64_t> words) : words_(words) {}
+
     explicit WordStub(std::vector<std::uint64_t> words) : words_(std::move(words)) {}
 
     [[nodiscard]] static constexpr result_type min() noexcept { return 0; }
+
     [[nodiscard]] static constexpr result_type max() noexcept { return ~result_type{0}; }
 
     result_type operator()() {
@@ -47,6 +51,7 @@ public:
     }
 
     [[nodiscard]] std::size_t consumed() const noexcept { return cursor_; }
+
     [[nodiscard]] std::size_t remaining() const noexcept { return words_.size() - cursor_; }
 
 private:

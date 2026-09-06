@@ -97,10 +97,9 @@ TEST_CASE("probit returns NaN outside (0, 1) and never throws", "[dist][normal][
     CHECK(std::isnan(probit(std::numeric_limits<double>::quiet_NaN())));
 }
 
-TEST_CASE("StandardNormal is exactly probit composed with open_unit_double",
-          "[dist][normal]") {
-    const std::uint64_t words[] = {0ULL, 1ULL, 0x8000'0000'0000'0000ULL, 0xDEAD'BEEF'FEED'FACEULL,
-                                   ~0ULL};
+TEST_CASE("StandardNormal is exactly probit composed with open_unit_double", "[dist][normal]") {
+    const std::uint64_t words[] = {
+        0ULL, 1ULL, 0x8000'0000'0000'0000ULL, 0xDEAD'BEEF'FEED'FACEULL, ~0ULL};
     bool matches = true;
     for (const std::uint64_t w : words) {
         WordStub a{w};

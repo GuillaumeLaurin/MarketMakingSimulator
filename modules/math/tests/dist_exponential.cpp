@@ -33,15 +33,14 @@ static_assert(Exponential::words_per_sample == 1);
 } // namespace
 
 TEST_CASE("Exponential is exactly -log(open_unit_double) / rate", "[dist][exponential]") {
-    const std::uint64_t words[] = {0ULL, 1ULL, 0x8000'0000'0000'0000ULL, 0xABCD'1234'5678'9ABCULL,
-                                   ~0ULL};
+    const std::uint64_t words[] = {
+        0ULL, 1ULL, 0x8000'0000'0000'0000ULL, 0xABCD'1234'5678'9ABCULL, ~0ULL};
     bool matches = true;
     for (const std::uint64_t w : words) {
         for (const double rate : {0.25, 1.0, 7.5}) {
             WordStub a{w};
             WordStub b{w};
-            matches = matches &&
-                      (Exponential{rate}(a) == -std::log(open_unit_double(b)) / rate);
+            matches = matches && (Exponential{rate}(a) == -std::log(open_unit_double(b)) / rate);
         }
     }
     CHECK(matches);
@@ -122,7 +121,8 @@ TEST_CASE("Exponential is memoryless", "[dist][exponential]") {
         }
     }
     // P(X > s + t | X > s) == P(X > t) == exp(-rate * t) == exp(-1)
-    CHECK(static_cast<double>(above_s_plus_t) / above_s == Catch::Approx(std::exp(-1.0)).margin(0.01));
+    CHECK(static_cast<double>(above_s_plus_t) / above_s ==
+          Catch::Approx(std::exp(-1.0)).margin(0.01));
 }
 
 TEST_CASE("exponential free function matches the sampler", "[dist][exponential]") {
