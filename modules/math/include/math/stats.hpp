@@ -8,5 +8,7 @@
 #include <math/stats/ewma.hpp>
 #include <math/stats/quantile.hpp>
 #include <math/stats/running_stats.hpp>
+#include <math/stats/traits.hpp>
+#include <math/stats/volatility.hpp>
 
 #endif // MMS_MATH_STATS_HPP
