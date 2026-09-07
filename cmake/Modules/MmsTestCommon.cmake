@@ -38,6 +38,19 @@ function(mms_add_test name)
         trompeloeil::trompeloeil
         ${ARG_LINK})
 
+    # Stage every runtime DLL the test needs next to the executable. On Windows
+    # the loader searches the exe's own directory first, so this makes each test
+    # self-contained regardless of PATH: it fixes catch_discover_tests launching
+    # the binary during discovery, and plain `ctest` / a direct run. The genex
+    # list is empty on ELF/Mach-O platforms (they use RPATH), so the command is a
+    # no-op there.
+    add_custom_command(TARGET ${_target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E
+            "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${_target}>>,copy_if_different,true>"
+            "$<TARGET_RUNTIME_DLLS:${_target}>" "$<TARGET_FILE_DIR:${_target}>"
+        COMMAND_EXPAND_LISTS
+        VERBATIM)
+
     if(COMMAND catch_discover_tests)
         # Modules are shared libraries by default (BUILD_SHARED_LIBS=ON), and the
         # test binary lives in out/test while the mms_<name>.dll it links lives in
