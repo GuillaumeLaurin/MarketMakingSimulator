@@ -4,6 +4,7 @@
 /// \file
 /// /// Umbrella for the MMS::math Stats layer.
 
+#include <math/stats/batch.hpp>
 #include <math/stats/drawdown.hpp>
 #include <math/stats/ewma.hpp>
 #include <math/stats/quantile.hpp>
