@@ -8,5 +8,6 @@
 #include <math/dist.hpp>
 #include <math/numeric.hpp>
 #include <math/rng.hpp>
+#include <math/types.hpp>
 
 #endif // MMS_MATH_HPP
