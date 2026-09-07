@@ -1,7 +1,7 @@
 #ifndef MMS_MATH_TYPES_HPP
 #define MMS_MATH_TYPES_HPP
 
-/// \file 
+/// \file
 /// The linear-algebra vocabulary types for MMS::math. Every zone that touches
 /// vectors or matrices (covariance, price processes, Avellaneda-Stoikov) works
 /// in these aliases; this is also the single include point for Eigen inside the
