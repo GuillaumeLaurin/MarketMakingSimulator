@@ -1,0 +1,15 @@
+#ifndef MMS_MATH_STATS_HPP
+#define MMS_MATH_STATS_HPP
+
+/// \file
+/// /// Umbrella for the MMS::math Stats layer.
+
+#include <math/stats/batch.hpp>
+#include <math/stats/drawdown.hpp>
+#include <math/stats/ewma.hpp>
+#include <math/stats/quantile.hpp>
+#include <math/stats/running_stats.hpp>
+#include <math/stats/traits.hpp>
+#include <math/stats/volatility.hpp>
+
+#endif // MMS_MATH_STATS_HPP
