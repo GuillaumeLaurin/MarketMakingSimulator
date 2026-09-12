@@ -21,20 +21,22 @@ namespace {
 
 using mms::math::Matrix;
 using mms::math::Vector;
-using mms::math::process::CorrelatedRandomWalk;
 using mms::math::process::correlated_normal_increment;
+using mms::math::process::CorrelatedRandomWalk;
 namespace rng = mms::math::rng;
 
 std::vector<rng::RngEngine> engines_for(const rng::RngHub& hub, int n) {
     std::vector<rng::RngEngine> engines;
     for (int i = 0; i < n; ++i) {
-        engines.push_back(hub.engine_for(
-            {.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{static_cast<std::uint64_t>(i)}}));
+        engines.push_back(hub.engine_for({.subsystem = rng::Subsystem::Price,
+                                          .asset = rng::AssetKey{static_cast<std::uint64_t>(i)}}));
     }
     return engines;
 }
 
-double max_abs_diff(const Vector& a, const Vector& b) { return (a - b).cwiseAbs().maxCoeff(); }
+double max_abs_diff(const Vector& a, const Vector& b) {
+    return (a - b).cwiseAbs().maxCoeff();
+}
 
 } // namespace
 
@@ -49,18 +51,14 @@ TEST_CASE("CorrelatedRandomWalk rejects inconsistent construction sizes",
     Matrix chol(2, 2);
     chol << 1.0, 0.0, 0.5, 1.0;
 
-    CHECK_THROWS_AS(
-        CorrelatedRandomWalk(prices, Vector(3), chol, engines_for(hub, 2)),
-        std::invalid_argument); // mu wrong size
-    CHECK_THROWS_AS(
-        CorrelatedRandomWalk(prices, mu, Matrix(3, 3), engines_for(hub, 2)),
-        std::invalid_argument); // chol wrong size
-    CHECK_THROWS_AS(
-        CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 3)),
-        std::invalid_argument); // wrong number of engines
-    CHECK_THROWS_AS(
-        CorrelatedRandomWalk(Vector(3), mu, chol, engines_for(hub, 2)),
-        std::invalid_argument); // initial_prices wrong size
+    CHECK_THROWS_AS(CorrelatedRandomWalk(prices, Vector(3), chol, engines_for(hub, 2)),
+                    std::invalid_argument); // mu wrong size
+    CHECK_THROWS_AS(CorrelatedRandomWalk(prices, mu, Matrix(3, 3), engines_for(hub, 2)),
+                    std::invalid_argument); // chol wrong size
+    CHECK_THROWS_AS(CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 3)),
+                    std::invalid_argument); // wrong number of engines
+    CHECK_THROWS_AS(CorrelatedRandomWalk(Vector(3), mu, chol, engines_for(hub, 2)),
+                    std::invalid_argument); // initial_prices wrong size
 
     CHECK_NOTHROW(CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 2)));
 }

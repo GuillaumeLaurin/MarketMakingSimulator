@@ -35,13 +35,15 @@ namespace rng = mms::math::rng;
 std::vector<rng::RngEngine> engines_for(const rng::RngHub& hub, rng::Subsystem subsystem, int n) {
     std::vector<rng::RngEngine> engines;
     for (int i = 0; i < n; ++i) {
-        engines.push_back(
-            hub.engine_for({.subsystem = subsystem, .asset = rng::AssetKey{static_cast<std::uint64_t>(i)}}));
+        engines.push_back(hub.engine_for(
+            {.subsystem = subsystem, .asset = rng::AssetKey{static_cast<std::uint64_t>(i)}}));
     }
     return engines;
 }
 
-double max_abs_diff(const Vector& a, const Vector& b) { return (a - b).cwiseAbs().maxCoeff(); }
+double max_abs_diff(const Vector& a, const Vector& b) {
+    return (a - b).cwiseAbs().maxCoeff();
+}
 
 /// A valid 3-asset, 2-factor scenario, reused across tests. Asset 1's
 /// idio_vol is 0: its variance is fully explained by the factors.
@@ -70,52 +72,68 @@ struct Scenario {
 
 } // namespace
 
-TEST_CASE("FactorModel rejects inconsistent asset-count dimensions",
-          "[process][factor_model]") {
+TEST_CASE("FactorModel rejects inconsistent asset-count dimensions", "[process][factor_model]") {
     const rng::RngHub hub{rng::Seed{0xA111'A111ULL}};
     const Scenario s = Scenario::make();
 
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, Vector(4), s.beta, s.factor_chol, s.idio_vol,
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument); // mu wrong size
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                Vector(4),
+                                s.beta,
+                                s.factor_chol,
+                                s.idio_vol,
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument); // mu wrong size
 
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, Matrix(4, 2), s.factor_chol, s.idio_vol,
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument); // beta wrong row count
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                Matrix(4, 2),
+                                s.factor_chol,
+                                s.idio_vol,
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument); // beta wrong row count
 
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, s.beta, s.factor_chol, Vector(4),
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument); // idio_vol wrong size
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                s.beta,
+                                s.factor_chol,
+                                Vector(4),
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument); // idio_vol wrong size
 
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                   engines_for(hub, rng::Subsystem::Price, 2),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument); // wrong number of asset engines
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                s.beta,
+                                s.factor_chol,
+                                s.idio_vol,
+                                engines_for(hub, rng::Subsystem::Price, 2),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument); // wrong number of asset engines
 }
 
-TEST_CASE("FactorModel rejects inconsistent factor-count dimensions",
-          "[process][factor_model]") {
+TEST_CASE("FactorModel rejects inconsistent factor-count dimensions", "[process][factor_model]") {
     const rng::RngHub hub{rng::Seed{0xA222'A222ULL}};
     const Scenario s = Scenario::make();
 
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, s.beta, Matrix(3, 3), s.idio_vol,
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument); // factor_chol wrong size
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                s.beta,
+                                Matrix(3, 3),
+                                s.idio_vol,
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument); // factor_chol wrong size
 
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 3)),
-        std::invalid_argument); // wrong number of factor engines
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                s.beta,
+                                s.factor_chol,
+                                s.idio_vol,
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 3)),
+                    std::invalid_argument); // wrong number of factor engines
 }
 
 TEST_CASE("FactorModel rejects a non-finite or negative idio_vol entry",
@@ -125,24 +143,34 @@ TEST_CASE("FactorModel rejects a non-finite or negative idio_vol entry",
 
     Vector negative_idio = s.idio_vol;
     negative_idio(0) = -0.5;
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, s.beta, s.factor_chol, negative_idio,
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument);
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                s.beta,
+                                s.factor_chol,
+                                negative_idio,
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument);
 
     Vector nan_idio = s.idio_vol;
     nan_idio(2) = std::numeric_limits<double>::quiet_NaN();
-    CHECK_THROWS_AS(
-        FactorModel(s.prices, s.mu, s.beta, s.factor_chol, nan_idio,
-                   engines_for(hub, rng::Subsystem::Price, 3),
-                   engines_for(hub, rng::Subsystem::PriceFactor, 2)),
-        std::invalid_argument);
+    CHECK_THROWS_AS(FactorModel(s.prices,
+                                s.mu,
+                                s.beta,
+                                s.factor_chol,
+                                nan_idio,
+                                engines_for(hub, rng::Subsystem::Price, 3),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                    std::invalid_argument);
 
     // idio_vol == 0 for one asset is legitimate: fully factor-explained variance.
-    CHECK_NOTHROW(FactorModel(s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                             engines_for(hub, rng::Subsystem::Price, 3),
-                             engines_for(hub, rng::Subsystem::PriceFactor, 2)));
+    CHECK_NOTHROW(FactorModel(s.prices,
+                              s.mu,
+                              s.beta,
+                              s.factor_chol,
+                              s.idio_vol,
+                              engines_for(hub, rng::Subsystem::Price, 3),
+                              engines_for(hub, rng::Subsystem::PriceFactor, 2)));
 }
 
 TEST_CASE("FactorModel exposes the initial prices and asset count before any advance",
@@ -150,9 +178,13 @@ TEST_CASE("FactorModel exposes the initial prices and asset count before any adv
     const rng::RngHub hub{rng::Seed{0xA444'A444ULL}};
     const Scenario s = Scenario::make();
 
-    FactorModel model{s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                     engines_for(hub, rng::Subsystem::Price, 3),
-                     engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
 
     CHECK(model.asset_count() == 3);
     CHECK(max_abs_diff(model.prices(), s.prices) < 1e-15);
@@ -169,8 +201,12 @@ TEST_CASE("FactorModel::advance matches the two-draw decomposition over several 
     std::vector<rng::RngEngine> ref_factor_engines = factor_engines;
 
     constexpr double dt = 0.1;
-    FactorModel model{s.prices, s.mu,          s.beta,
-                      s.factor_chol, s.idio_vol, std::move(engines),
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      std::move(engines),
                       std::move(factor_engines)};
 
     Vector expected = s.prices;
@@ -188,14 +224,17 @@ TEST_CASE("FactorModel::advance matches the two-draw decomposition over several 
     }
 }
 
-TEST_CASE("FactorModel::reset restores prices and both engine groups",
-          "[process][factor_model]") {
+TEST_CASE("FactorModel::reset restores prices and both engine groups", "[process][factor_model]") {
     const rng::RngHub hub{rng::Seed{0xA666'A666ULL}};
     const Scenario s = Scenario::make();
 
-    FactorModel model{s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                     engines_for(hub, rng::Subsystem::Price, 3),
-                     engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
 
     model.advance(0.5);
     model.advance(0.5);
@@ -213,9 +252,13 @@ TEST_CASE("FactorModel::advance(0.0) leaves prices unchanged", "[process][factor
     const rng::RngHub hub{rng::Seed{0xA777'A777ULL}};
     const Scenario s = Scenario::make();
 
-    FactorModel model{s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                     engines_for(hub, rng::Subsystem::Price, 3),
-                     engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
     model.advance(0.0);
 
     CHECK(max_abs_diff(model.prices(), s.prices) < 1e-15);
@@ -226,9 +269,13 @@ TEST_CASE("FactorModel::advance rejects a negative dt via the PriceProcess contr
     const rng::RngHub hub{rng::Seed{0xA888'A888ULL}};
     const Scenario s = Scenario::make();
 
-    FactorModel model{s.prices, s.mu, s.beta, s.factor_chol, s.idio_vol,
-                     engines_for(hub, rng::Subsystem::Price, 3),
-                     engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
 
     CHECK_THROWS_AS(model.advance(-1.0), std::invalid_argument);
     CHECK(max_abs_diff(model.prices(), s.prices) < 1e-15);
@@ -249,8 +296,8 @@ TEST_CASE("FactorModel with beta == 0 and factor_chol == 0 is pure deterministic
     std::vector<rng::RngEngine> engines = engines_for(hub, rng::Subsystem::Price, 2);
     std::vector<rng::RngEngine> factor_engines = engines_for(hub, rng::Subsystem::PriceFactor, 1);
 
-    FactorModel model{prices, mu, beta, factor_chol, idio_vol, std::move(engines),
-                     std::move(factor_engines)};
+    FactorModel model{
+        prices, mu, beta, factor_chol, idio_vol, std::move(engines), std::move(factor_engines)};
     model.advance(2.0);
 
     CHECK(model.prices()(0) == Catch::Approx(102.0));

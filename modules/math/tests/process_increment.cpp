@@ -27,13 +27,15 @@ namespace rng = mms::math::rng;
 std::vector<rng::RngEngine> engines_for(const rng::RngHub& hub, int n) {
     std::vector<rng::RngEngine> engines;
     for (int i = 0; i < n; ++i) {
-        engines.push_back(hub.engine_for(
-            {.subsystem = rng::Subsystem::Price, .asset = rng::AssetKey{static_cast<std::uint64_t>(i)}}));
+        engines.push_back(hub.engine_for({.subsystem = rng::Subsystem::Price,
+                                          .asset = rng::AssetKey{static_cast<std::uint64_t>(i)}}));
     }
     return engines;
 }
 
-double max_abs_diff(const Vector& a, const Vector& b) { return (a - b).cwiseAbs().maxCoeff(); }
+double max_abs_diff(const Vector& a, const Vector& b) {
+    return (a - b).cwiseAbs().maxCoeff();
+}
 
 } // namespace
 
@@ -86,7 +88,8 @@ TEST_CASE("correlated_normal_increment with an identity L is sqrt(dt) * z",
 
     Vector expected(2);
     for (int i = 0; i < 2; ++i) {
-        expected(i) = 2.0 * mms::math::dist::standard_normal(reference[static_cast<std::size_t>(i)]);
+        expected(i) =
+            2.0 * mms::math::dist::standard_normal(reference[static_cast<std::size_t>(i)]);
     }
 
     CHECK(max_abs_diff(actual, expected) < 1e-15);
@@ -132,9 +135,9 @@ TEST_CASE("correlated_normal_increment rejects a negative or non-finite dt",
     CHECK_THROWS_AS(
         correlated_normal_increment(chol, engines_b, std::numeric_limits<double>::quiet_NaN()),
         std::invalid_argument);
-    CHECK_THROWS_AS(correlated_normal_increment(chol, engines_c,
-                                                -std::numeric_limits<double>::infinity()),
-                    std::invalid_argument);
+    CHECK_THROWS_AS(
+        correlated_normal_increment(chol, engines_c, -std::numeric_limits<double>::infinity()),
+        std::invalid_argument);
     CHECK_NOTHROW(correlated_normal_increment(chol, engines_d, 0.0));
 }
 
@@ -148,8 +151,7 @@ TEST_CASE("correlated_normal_increment handles a single asset", "[process][incre
     constexpr double dt = 2.0;
 
     const Vector actual = correlated_normal_increment(chol, engines, dt);
-    const double expected = 3.0 * std::sqrt(dt) *
-                            mms::math::dist::standard_normal(reference[0]);
+    const double expected = 3.0 * std::sqrt(dt) * mms::math::dist::standard_normal(reference[0]);
 
     CHECK(actual(0) == Catch::Approx(expected));
 }
