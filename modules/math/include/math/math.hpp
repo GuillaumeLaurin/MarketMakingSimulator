@@ -8,6 +8,7 @@
 #include <math/covariance.hpp>
 #include <math/dist.hpp>
 #include <math/numeric.hpp>
+#include <math/process.hpp>
 #include <math/rng.hpp>
 #include <math/stats.hpp>
 #include <math/types.hpp>
