@@ -4,6 +4,7 @@
 /// \file
 /// Umbrella for the MMS::math layer
 
+#include <math/avellaneda_stoikov.hpp>
 #include <math/bits.hpp>
 #include <math/covariance.hpp>
 #include <math/dist.hpp>
