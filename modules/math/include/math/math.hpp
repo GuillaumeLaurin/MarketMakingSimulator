@@ -5,6 +5,7 @@
 /// Umbrella for the MMS::math layer
 
 #include <math/bits.hpp>
+#include <math/covariance.hpp>
 #include <math/dist.hpp>
 #include <math/numeric.hpp>
 #include <math/rng.hpp>
