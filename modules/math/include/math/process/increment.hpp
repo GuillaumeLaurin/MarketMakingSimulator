@@ -20,6 +20,9 @@ namespace mms::math::process {
 /// sqrt(dt) * L * z, with z ~ N(0, I) drawn one word per engine (one engine
 /// per row of chol). Narrow contract: chol.rows() == chol.cols() ==
 /// engines.size(); chol is read only through its lower-triangular part.
+/// Throws std::invalid_argument if dt is not finite and >= 0 (sqrt(dt) is
+/// undefined for a negative dt; this is a malformed input, not a result
+/// math declines to clamp).
 [[nodiscard]] MMS_MATH_EXPORT Vector correlated_normal_increment(const Matrix& chol,
                                                                  std::span<rng::RngEngine> engines,
                                                                  double dt);

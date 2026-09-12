@@ -41,7 +41,7 @@ CorrelatedRandomWalk::CorrelatedRandomWalk(Vector initial_prices,
     prices_ = initial_prices_;
 }
 
-void CorrelatedRandomWalk::advance(double dt) {
+void CorrelatedRandomWalk::do_advance(double dt) {
     prices_ += (mu_ * dt) + correlated_normal_increment(chol_, engines_, dt);
 }
 

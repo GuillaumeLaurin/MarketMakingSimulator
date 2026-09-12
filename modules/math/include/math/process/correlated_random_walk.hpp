@@ -29,16 +29,15 @@ public:
                          Matrix chol,
                          std::vector<rng::RngEngine> engines);
 
-    /// prices_ += mu * dt + correlated_normal_increment(chol_, engines_, dt).
-    /// Any finite dt is acceptedd, including negative or zero.
-    void advance(double dt) override;
-
     [[nodiscard]] const Vector& prices() const noexcept override { return prices_; }
 
     /// Restores prices_ and the RNG engines to their state at construction.
     void reset() override;
 
     [[nodiscard]] Index asset_count() const noexcept override { return prices_.size(); }
+
+protected:
+    void do_advance(double dt) override;
 
 private:
     Vector initial_prices_;

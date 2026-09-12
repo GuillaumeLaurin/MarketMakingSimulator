@@ -144,6 +144,22 @@ TEST_CASE("CorrelatedRandomWalk::advance(0.0) leaves prices unchanged",
     CHECK(walk.prices()(1) == Catch::Approx(7.0));
 }
 
+TEST_CASE("CorrelatedRandomWalk::advance rejects a negative dt via the PriceProcess contract",
+          "[process][correlated_random_walk]") {
+    const rng::RngHub hub{rng::Seed{0x7777'7777ULL}};
+    Vector prices(2);
+    prices << 10.0, 20.0;
+    Vector mu(2);
+    mu << 0.01, 0.02;
+    Matrix chol = Matrix::Identity(2, 2);
+
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2)};
+
+    CHECK_THROWS_AS(walk.advance(-1.0), std::invalid_argument);
+    // the rejected call must not have mutated prices or consumed any engine word
+    CHECK(max_abs_diff(walk.prices(), prices) < 1e-15);
+}
+
 TEST_CASE("CorrelatedRandomWalk with chol == 0 is pure deterministic drift",
           "[process][correlated_random_walk]") {
     const rng::RngHub hub{rng::Seed{0x6666'6666ULL}};

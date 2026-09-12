@@ -6,6 +6,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
+#include <stdexcept>
 #include <vector>
 
 #include <catch2/catch_approx.hpp>
@@ -115,6 +117,25 @@ TEST_CASE("correlated_normal_increment at dt == 0 is the zero vector", "[process
 
     CHECK(actual(0) == Catch::Approx(0.0));
     CHECK(actual(1) == Catch::Approx(0.0));
+}
+
+TEST_CASE("correlated_normal_increment rejects a negative or non-finite dt",
+          "[process][increment]") {
+    const rng::RngHub hub{rng::Seed{0xDEAD'BEEFULL}};
+    const Matrix chol = Matrix::Identity(2, 2);
+    std::vector<rng::RngEngine> engines_a = engines_for(hub, 2);
+    std::vector<rng::RngEngine> engines_b = engines_for(hub, 2);
+    std::vector<rng::RngEngine> engines_c = engines_for(hub, 2);
+    std::vector<rng::RngEngine> engines_d = engines_for(hub, 2);
+
+    CHECK_THROWS_AS(correlated_normal_increment(chol, engines_a, -1.0), std::invalid_argument);
+    CHECK_THROWS_AS(
+        correlated_normal_increment(chol, engines_b, std::numeric_limits<double>::quiet_NaN()),
+        std::invalid_argument);
+    CHECK_THROWS_AS(correlated_normal_increment(chol, engines_c,
+                                                -std::numeric_limits<double>::infinity()),
+                    std::invalid_argument);
+    CHECK_NOTHROW(correlated_normal_increment(chol, engines_d, 0.0));
 }
 
 TEST_CASE("correlated_normal_increment handles a single asset", "[process][increment]") {

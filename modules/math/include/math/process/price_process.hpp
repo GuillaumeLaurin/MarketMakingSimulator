@@ -8,6 +8,8 @@
 /// called once per tick, where a virtual call is negligible against the rest
 /// of a tick's work. `simulation` holds a `std::unique_ptr<PriceProcess>`.
 
+#include <stdexcept>
+
 #include <math/types.hpp>
 
 namespace mms::math::process {
@@ -16,9 +18,15 @@ class PriceProcess {
 public:
     virtual ~PriceProcess() = default;
 
-    /// Advance the process by dt (any finite dt, including negative or zero;
-    /// math never clamps or imposes domain policy).
-    virtual void advance(double dt) = 0;
+    /// Advances by dt. Throws std::invalid_argument if dt is not finite and
+    /// >= 0 - a contract every PriceProcess honors identically, regardless of
+    /// implementation (Liskov: no subclass may relax or strengthen this).
+    void advance(double dt) {
+        if (!(dt >= 0.0)) {
+            throw std::invalid_argument("PriceProcess::advance: dt must be finite and >= 0");
+        }
+        do_advance(dt);
+    }
 
     /// Current prices, one per asset, in the order fixed at construction.
     [[nodiscard]] virtual const Vector& prices() const noexcept = 0;
@@ -27,6 +35,9 @@ public:
     virtual void reset() = 0;
 
     [[nodiscard]] virtual Index asset_count() const noexcept = 0;
+
+protected:
+    virtual void do_advance(double dt) = 0;
 };
 
 } // namespace mms::math::process
