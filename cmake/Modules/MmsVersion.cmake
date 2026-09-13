@@ -12,6 +12,24 @@
 include_guard(GLOBAL)
 
 function(mms_generate_version_header)
+    # Best-effort commit hash: falls back to "unknown" outside a git checkout
+    # (e.g. a source tarball) or if git itself isn't installed - never a
+    # configure error. Used by MMS::diagnostics' error dumps (DIAG4).
+    set(MMS_GIT_COMMIT_HASH "unknown")
+    find_package(Git QUIET)
+    if(Git_FOUND)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-parse HEAD
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            OUTPUT_VARIABLE _git_hash
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE _git_result)
+        if(_git_result EQUAL 0 AND _git_hash)
+            set(MMS_GIT_COMMIT_HASH "${_git_hash}")
+        endif()
+    endif()
+
     set(_out "${PROJECT_BINARY_DIR}/gen/mms/version.hpp")
     configure_file("${PROJECT_SOURCE_DIR}/cmake/version.hpp.in" "${_out}" @ONLY)
 

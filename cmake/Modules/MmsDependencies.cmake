@@ -17,6 +17,7 @@ find_package(Eigen3 CONFIG REQUIRED)           # linear algebra for MMS::math
 find_package(tomlplusplus CONFIG REQUIRED)     # simulation config files (TOML)
 find_package(nlohmann_json CONFIG REQUIRED)    # results / scenario export (JSON)
 find_package(CLI11 CONFIG REQUIRED)            # simulation executable argument parsing
+find_package(cpptrace CONFIG REQUIRED)         # stacktrace capture for MMS::diagnostics
 
 # --- test-only (vcpkg feature "tests") -------------------------------------
 if(MMS_BUILD_TESTS)
