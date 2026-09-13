@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -14,7 +15,6 @@
 #include <diagnostics/diagnostic_context.hpp>
 #include <fmt/chrono.h>
 #include <fmt/core.h>
-#include <fmt/std.h>
 
 #include <mms/version.hpp>
 
@@ -34,6 +34,21 @@ std::uint32_t current_process_id() noexcept {
 #else
     return static_cast<std::uint32_t>(::getpid());
 #endif
+}
+
+/// std::thread::id has an operator<< but no fmt::formatter of its own unless
+/// <fmt/std.h> is included - and that header is deliberately avoided here:
+/// its formatter<std::filesystem::path> is a full (non-template)
+/// specialization, so its methods get compiled unconditionally as soon as
+/// the header is included, whether or not this TU ever formats a path. On
+/// some clang + libstdc++ combinations that specialization itself fails to
+/// compile (a real fmt/toolchain incompatibility, not something in this
+/// file). Converting through operator<< ourselves sidesteps needing any fmt
+/// formatter for std::thread::id at all.
+std::string thread_id_to_string(std::thread::id id) {
+    std::ostringstream out;
+    out << id;
+    return out.str();
 }
 
 } // namespace
@@ -80,7 +95,7 @@ std::string format_dump(std::string_view what, const DiagnosticContext& context)
                        proc.commit_hash,
                        proc.build_type,
                        proc.process_id,
-                       context.thread_id,
+                       thread_id_to_string(context.thread_id),
                        fmt::gmtime(capture_time),
                        context.stacktrace);
 }
