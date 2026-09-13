@@ -42,12 +42,15 @@ struct Captured {
 int duplicate_fd(int fd) {
     return _dup(fd);
 }
+
 int redirect_fd(int target_fd, int source_fd) {
     return _dup2(source_fd, target_fd);
 }
+
 int close_fd(int fd) {
     return _close(fd);
 }
+
 int fd_of(std::FILE* stream) {
     return _fileno(stream);
 }
@@ -55,12 +58,15 @@ int fd_of(std::FILE* stream) {
 int duplicate_fd(int fd) {
     return ::dup(fd);
 }
+
 int redirect_fd(int target_fd, int source_fd) {
     return ::dup2(source_fd, target_fd);
 }
+
 int close_fd(int fd) {
     return ::close(fd);
 }
+
 int fd_of(std::FILE* stream) {
     return ::fileno(stream);
 }
