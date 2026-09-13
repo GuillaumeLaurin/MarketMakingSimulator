@@ -21,8 +21,12 @@ thread_local Logger* current_logger = nullptr;
 
 } // namespace
 
-void set_current(Logger* logger) noexcept { current_logger = logger; }
+void set_current(Logger* logger) noexcept {
+    current_logger = logger;
+}
 
-Logger* current() noexcept { return current_logger;}
+Logger* current() noexcept {
+    return current_logger;
+}
 
 } // namespace mms::logging

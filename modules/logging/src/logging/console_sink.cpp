@@ -1,11 +1,10 @@
 /// \file
 /// Implementation of ConsoleSink (<logging/console_sink.hpp>).
 
-#include <logging/console_sink.hpp>
-
 #include <cstdio>
 
 #include <fmt/core.h>
+#include <logging/console_sink.hpp>
 
 namespace mms::logging {
 

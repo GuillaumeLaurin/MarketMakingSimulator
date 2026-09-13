@@ -27,6 +27,6 @@ private:
     std::vector<std::pair<Level, std::string>> messages_;
 };
 
-} // mms::logging
+} // namespace mms::logging
 
 #endif // MMS_LOGGING_IN_MEMORY_SINK_HPP

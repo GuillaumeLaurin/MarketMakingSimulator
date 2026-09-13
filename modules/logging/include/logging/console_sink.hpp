@@ -25,5 +25,4 @@ private:
 
 } // namespace mms::logging
 
-
 #endif // MMS_LOGGING_CONSOLE_SINK_HPP

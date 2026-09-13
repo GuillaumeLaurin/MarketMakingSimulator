@@ -1,12 +1,11 @@
 /// \file
 /// Implementation of FileSink (<logging/file_sink.hpp>).
 
-#include <logging/file_sink.hpp>
-
 #include <stdexcept>
 
 #include <fmt/core.h>
 #include <fmt/std.h>
+#include <logging/file_sink.hpp>
 
 namespace mms::logging {
 

@@ -4,7 +4,7 @@
 /// \file
 /// Logger: owns a runtime level floor and a set of sinks, dispatches an
 /// already-formatted message to every sink when the level clears that floor.
-/// One private Logger per simulation run - never a shared/global instance. 
+/// One private Logger per simulation run - never a shared/global instance.
 /// set_current()/current() give call sites access to "their" run's
 /// Logger via thread-local storage, without threading a Logger&
 /// through every function signature in core.
