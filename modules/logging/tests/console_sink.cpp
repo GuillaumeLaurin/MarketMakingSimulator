@@ -16,8 +16,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <io.h> // _dup, _dup2, _fileno, _close (MSVC and MinGW-w64 both provide these)
 #include <logging/console_sink.hpp>
+
+#if defined(_WIN32)
+#include <io.h> // _dup, _dup2, _fileno, _close
+#else
+#include <unistd.h> // dup, dup2, close
+#endif
 
 using mms::logging::ConsoleSink;
 using mms::logging::Level;
@@ -29,6 +34,38 @@ struct Captured {
     std::string err;
 };
 
+// Thin wrappers over the platform's fd-duplication primitives: MSVC and
+// MinGW-w64 expose them with a leading underscore under <io.h>, POSIX
+// exposes the unprefixed names under <unistd.h> (fileno lives in <cstdio>
+// on both).
+#if defined(_WIN32)
+int duplicate_fd(int fd) {
+    return _dup(fd);
+}
+int redirect_fd(int target_fd, int source_fd) {
+    return _dup2(source_fd, target_fd);
+}
+int close_fd(int fd) {
+    return _close(fd);
+}
+int fd_of(std::FILE* stream) {
+    return _fileno(stream);
+}
+#else
+int duplicate_fd(int fd) {
+    return ::dup(fd);
+}
+int redirect_fd(int target_fd, int source_fd) {
+    return ::dup2(source_fd, target_fd);
+}
+int close_fd(int fd) {
+    return ::close(fd);
+}
+int fd_of(std::FILE* stream) {
+    return ::fileno(stream);
+}
+#endif
+
 /// Redirects both stdout and stderr to scratch files for the duration of
 /// action, restores both, and returns everything each one received.
 Captured capture_console(const std::function<void()>& action) {
@@ -37,10 +74,10 @@ Captured capture_console(const std::function<void()>& action) {
 
     std::fflush(stdout);
     std::fflush(stderr);
-    const int out_fd = _fileno(stdout);
-    const int err_fd = _fileno(stderr);
-    const int saved_out = _dup(out_fd);
-    const int saved_err = _dup(err_fd);
+    const int out_fd = fd_of(stdout);
+    const int err_fd = fd_of(stderr);
+    const int saved_out = duplicate_fd(out_fd);
+    const int saved_err = duplicate_fd(err_fd);
     REQUIRE(saved_out != -1);
     REQUIRE(saved_err != -1);
 
@@ -48,8 +85,8 @@ Captured capture_console(const std::function<void()>& action) {
     std::FILE* err_scratch = std::fopen(err_path.string().c_str(), "w");
     REQUIRE(out_scratch != nullptr);
     REQUIRE(err_scratch != nullptr);
-    REQUIRE(_dup2(_fileno(out_scratch), out_fd) == 0);
-    REQUIRE(_dup2(_fileno(err_scratch), err_fd) == 0);
+    REQUIRE(redirect_fd(out_fd, fd_of(out_scratch)) == 0);
+    REQUIRE(redirect_fd(err_fd, fd_of(err_scratch)) == 0);
 
     action();
 
@@ -57,10 +94,10 @@ Captured capture_console(const std::function<void()>& action) {
     std::fflush(stderr);
     std::fclose(out_scratch);
     std::fclose(err_scratch);
-    _dup2(saved_out, out_fd);
-    _dup2(saved_err, err_fd);
-    _close(saved_out);
-    _close(saved_err);
+    redirect_fd(out_fd, saved_out);
+    redirect_fd(err_fd, saved_err);
+    close_fd(saved_out);
+    close_fd(saved_err);
 
     Captured result;
     {
