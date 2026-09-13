@@ -26,7 +26,12 @@ static_assert(std::is_base_of_v<TracedBase, OutOfRange>);
 
 TEST_CASE("Traced<std::invalid_argument> is caught as std::invalid_argument, unmodified",
           "[diagnostics][traced]") {
-    CHECK_THROWS_AS(throw InvalidArgument("bad value"), std::invalid_argument);
+    // Wrapped in an immediately-invoked lambda: CHECK_THROWS_AS(throw ..., ...)
+    // directly makes MSVC's /WX flag C4702 (unreachable code) on the macro's
+    // own fallback path, since a bare throw-expression is provably
+    // non-returning at the call site; a function call (even a lambda's) is
+    // opaque to that analysis.
+    CHECK_THROWS_AS(([] { throw InvalidArgument("bad value"); }()), std::invalid_argument);
 }
 
 TEST_CASE("Traced<std::invalid_argument> preserves what() exactly", "[diagnostics][traced]") {
@@ -53,8 +58,8 @@ TEST_CASE("a caught std::exception& can be dynamic_cast to TracedBase for the ri
 
 TEST_CASE("Traced<std::runtime_error> and Traced<std::out_of_range> behave the same way",
           "[diagnostics][traced]") {
-    CHECK_THROWS_AS(throw RuntimeError("runtime failure"), std::runtime_error);
-    CHECK_THROWS_AS(throw OutOfRange("index out of range"), std::out_of_range);
+    CHECK_THROWS_AS(([] { throw RuntimeError("runtime failure"); }()), std::runtime_error);
+    CHECK_THROWS_AS(([] { throw OutOfRange("index out of range"); }()), std::out_of_range);
 
     try {
         throw RuntimeError("runtime failure");
