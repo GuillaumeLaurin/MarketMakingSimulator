@@ -8,6 +8,9 @@
 #define MMS_VERSION_MINOR @PROJECT_VERSION_MINOR@
 #define MMS_VERSION_PATCH @PROJECT_VERSION_PATCH@
 #define MMS_VERSION_STRING "@PROJECT_VERSION@"
+// "unknown" outside a git checkout (e.g. a source tarball) or without git
+// installed - captured once at configure time, not updated by a build alone.
+#define MMS_GIT_COMMIT_HASH "@MMS_GIT_COMMIT_HASH@"
 
 // Integer suitable for comparisons: MAJOR * 10000 + MINOR * 100 + PATCH
 #define MMS_VERSION \
@@ -15,10 +18,11 @@
 
 namespace mms {
 
-inline constexpr int         version_major  = @PROJECT_VERSION_MAJOR@;
-inline constexpr int         version_minor  = @PROJECT_VERSION_MINOR@;
-inline constexpr int         version_patch  = @PROJECT_VERSION_PATCH@;
-inline constexpr const char *version_string = "@PROJECT_VERSION@";
+inline constexpr int         version_major     = @PROJECT_VERSION_MAJOR@;
+inline constexpr int         version_minor     = @PROJECT_VERSION_MINOR@;
+inline constexpr int         version_patch     = @PROJECT_VERSION_PATCH@;
+inline constexpr const char *version_string    = "@PROJECT_VERSION@";
+inline constexpr const char *git_commit_hash   = "@MMS_GIT_COMMIT_HASH@";
 
 } // namespace mms
 
