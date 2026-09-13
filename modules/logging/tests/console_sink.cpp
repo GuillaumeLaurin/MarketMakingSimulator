@@ -91,8 +91,11 @@ Captured capture_console(const std::function<void()>& action) {
     std::FILE* err_scratch = std::fopen(err_path.string().c_str(), "w");
     REQUIRE(out_scratch != nullptr);
     REQUIRE(err_scratch != nullptr);
-    REQUIRE(redirect_fd(out_fd, fd_of(out_scratch)) == 0);
-    REQUIRE(redirect_fd(err_fd, fd_of(err_scratch)) == 0);
+    // _dup2 (Windows) returns 0 on success; POSIX dup2 returns the new fd
+    // number instead (== out_fd/err_fd, never 0 for stdout/stderr) - only
+    // -1 is a portable failure signal across both.
+    REQUIRE(redirect_fd(out_fd, fd_of(out_scratch)) != -1);
+    REQUIRE(redirect_fd(err_fd, fd_of(err_scratch)) != -1);
 
     action();
 
