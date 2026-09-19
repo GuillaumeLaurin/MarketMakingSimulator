@@ -6,6 +6,7 @@
 
 #include <core/concepts.hpp>
 #include <core/order_id.hpp>
+#include <core/order.hpp>
 #include <core/side.hpp>
 
 #endif // MMS_CORE_CORE_HPP
