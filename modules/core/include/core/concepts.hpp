@@ -13,10 +13,11 @@
 namespace mms::core {
 
 template<class T>
-concept OrderedArithmetic = std::totally_ordered<T> && requires(T a, T b) {
-    { a + b } -> std::convertible_to<T>;
-    { a - b } -> std::convertible_to<T>;
-};
+concept OrderedArithmetic =
+    std::totally_ordered<T> && std::default_initializable<T> && requires(T a, T b) {
+        { a + b } -> std::convertible_to<T>;
+        { a - b } -> std::convertible_to<T>;
+    };
 
 } // namespace mms::core
 
