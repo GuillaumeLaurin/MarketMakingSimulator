@@ -104,6 +104,40 @@ TEST_CASE("OrderBook::fill routes to the correct side and updates depth", "[core
     CHECK(book.size(Side::Sell) == 0);
 }
 
+TEST_CASE("OrderBook::total_matchable on the Buy side walks from the HIGHEST price outward "
+          "(same direction as best())",
+          "[core][order_book]") {
+    OrderBook<double, double> book;
+    book.add(OrderId{1}, make_order(Side::Buy, 100.0, 3.0));
+    book.add(OrderId{2}, make_order(Side::Buy, 101.0, 5.0));
+    book.add(OrderId{3}, make_order(Side::Buy, 102.0, 7.0));
+
+    // A Sell aggressor crossing at or above 101.0 - Buy's own "best" (the
+    // highest price, 102.0) must be the one checked first, matching best().
+    const auto total = book.total_matchable(Side::Buy, [](double price) { return price >= 101.0; });
+    CHECK(total == 12.0); // 102.0's 7 + 101.0's 5, NOT 100.0's 3
+
+    // This is the exact scenario the direction bug broke: if Buy had walked
+    // ascending (lowest first) instead, it would have stopped immediately
+    // at 100.0 (which fails >= 101.0) and returned 0.0 instead of 12.0.
+    CHECK(book.total_matchable(Side::Buy, [](double price) { return price >= 101.0; }) > 0.0);
+}
+
+TEST_CASE("OrderBook::total_matchable on the Sell side walks from the LOWEST price outward "
+          "(same direction as best())",
+          "[core][order_book]") {
+    OrderBook<double, double> book;
+    book.add(OrderId{1}, make_order(Side::Sell, 100.0, 3.0));
+    book.add(OrderId{2}, make_order(Side::Sell, 101.0, 5.0));
+    book.add(OrderId{3}, make_order(Side::Sell, 102.0, 7.0));
+
+    // A Buy aggressor crossing at or below 101.0 - Sell's own "best" (the
+    // lowest price, 100.0) must be the one checked first, matching best().
+    const auto total =
+        book.total_matchable(Side::Sell, [](double price) { return price <= 101.0; });
+    CHECK(total == 8.0); // 100.0's 3 + 101.0's 5, NOT 102.0's 7
+}
+
 TEST_CASE("OrderBook::depth_at sums quantity at a price on the requested side only",
           "[core][order_book]") {
     OrderBook<double, double> book;

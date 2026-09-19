@@ -130,6 +130,53 @@ TEST_CASE("PriceLevels::reduce to exactly zero removes the entry", "[core][price
     CHECK(levels.size() == 0);
 }
 
+TEST_CASE("PriceLevels::total_matchable_ascending sums from the lowest price outward, "
+          "stopping at the first rejected price",
+          "[core][price_levels]") {
+    PriceLevels<double, double> levels;
+    levels.add(OrderId{1}, make_order(100.0, 3.0));
+    levels.add(OrderId{2}, make_order(101.0, 5.0));
+    levels.add(OrderId{3}, make_order(102.0, 7.0));
+
+    // accepts everything <= 101.0: sums the 100.0 and 101.0 levels, stops
+    // before reaching 102.0.
+    const auto total =
+        levels.total_matchable_ascending([](double price) { return price <= 101.0; });
+    CHECK(total == 8.0); // 3 + 5, NOT + 7
+
+    // accepts nothing: the very first (lowest) level already fails.
+    CHECK(levels.total_matchable_ascending([](double) { return false; }) == 0.0);
+
+    // accepts everything: sums the whole book.
+    CHECK(levels.total_matchable_ascending([](double) { return true; }) == 15.0); // 3 + 5 + 7
+}
+
+TEST_CASE("PriceLevels::total_matchable_descending sums from the highest price outward, "
+          "stopping at the first rejected price",
+          "[core][price_levels]") {
+    PriceLevels<double, double> levels;
+    levels.add(OrderId{1}, make_order(100.0, 3.0));
+    levels.add(OrderId{2}, make_order(101.0, 5.0));
+    levels.add(OrderId{3}, make_order(102.0, 7.0));
+
+    // accepts everything >= 101.0: sums the 102.0 and 101.0 levels (walked
+    // highest-first), stops before reaching 100.0.
+    const auto total =
+        levels.total_matchable_descending([](double price) { return price >= 101.0; });
+    CHECK(total == 12.0); // 7 + 5, NOT + 3
+
+    CHECK(levels.total_matchable_descending([](double) { return false; }) == 0.0);
+    CHECK(levels.total_matchable_descending([](double) { return true; }) == 15.0);
+}
+
+TEST_CASE("PriceLevels::total_matchable on an empty book is zero regardless of the predicate",
+          "[core][price_levels]") {
+    const PriceLevels<double, double> levels;
+
+    CHECK(levels.total_matchable_ascending([](double) { return true; }) == 0.0);
+    CHECK(levels.total_matchable_descending([](double) { return true; }) == 0.0);
+}
+
 TEST_CASE("PriceLevels::reduce preserves FIFO order of what remains", "[core][price_levels]") {
     PriceLevels<double, double> levels;
     levels.add(OrderId{1}, make_order(100.0, 5.0));

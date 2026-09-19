@@ -200,8 +200,8 @@ public:
     /// to check Fill-Or-Kill feasibility up front.
     template<class Predicate>
     [[nodiscard]] Quantity total_matchable(Side side, Predicate accepts) const {
-        return side == Side::Buy ? levels_for(side).total_matchable_ascending(accepts)
-                                 : levels_for(side).total_matchable_descending(accepts);
+        return side == Side::Buy ? levels_for(side).total_matchable_descending(accepts)
+                                 : levels_for(side).total_matchable_ascending(accepts);
     }
 
     [[nodiscard]] bool empty(Side side) const noexcept { return levels_for(side).empty(); }
