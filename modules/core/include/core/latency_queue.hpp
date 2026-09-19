@@ -1,6 +1,14 @@
 #ifndef MMS_CORE_LATENCY_QUEUE_HPP
 #define MMS_CORE_LATENCY_QUEUE_HPP
 
+/// \file
+/// LatencyQueue<T>: a generic scheduled-delivery mechanism, not hardcoded
+/// to orders - models the delay between "an event happens" and "it takes
+/// effect/is observed" (order arrival, ack delivery, market data delivery,
+/// or any other delayed-event kind). core never computes/decides the
+/// latency VALUE itself (constant vs. sampled from a math::dist
+/// distribution).
+
 #include <cstddef>
 #include <cstdint>
 #include <queue>
