@@ -28,16 +28,14 @@ enum class TimeInForce : std::uint8_t { GTC, IOC, FOK };
 /// TimeInForce with a runtime check.
 enum class MarketTimeInForce : std::uint8_t { IOC, FOK };
 
-template<OrderedArithmetic Price, OrderedArithmetic Quantity>
-struct LimitOrder {
+template<OrderedArithmetic Price, OrderedArithmetic Quantity> struct LimitOrder {
     Side side;
     Price price;
     Quantity quantity;
     TimeInForce time_in_force;
 };
 
-template<OrderedArithmetic Quantity>
-struct MarketOrder {
+template<OrderedArithmetic Quantity> struct MarketOrder {
     Side side;
     Quantity quantity;
     MarketTimeInForce time_in_force;

@@ -11,7 +11,7 @@
 namespace mms::core {
 
 enum class OrderId : std::uint64_t {};
-    
+
 } // namespace mms::core
 
 #endif // MMS_CORE_ORDER_ID_HPP

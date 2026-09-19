@@ -12,7 +12,7 @@
 
 namespace mms::core {
 
-template <class T>
+template<class T>
 concept OrderedArithmetic = std::totally_ordered<T> && requires(T a, T b) {
     { a + b } -> std::convertible_to<T>;
     { a - b } -> std::convertible_to<T>;

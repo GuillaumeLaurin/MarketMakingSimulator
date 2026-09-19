@@ -5,8 +5,9 @@
 /// Umbrella file for MMS::core module
 
 #include <core/concepts.hpp>
-#include <core/order_id.hpp>
 #include <core/order.hpp>
+#include <core/order_book.hpp>
+#include <core/order_id.hpp>
 #include <core/side.hpp>
 #include <core/trade.hpp>
 

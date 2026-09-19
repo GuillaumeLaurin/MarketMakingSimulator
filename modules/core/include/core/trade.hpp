@@ -10,8 +10,7 @@
 
 namespace mms::core {
 
-template<OrderedArithmetic Price, OrderedArithmetic Quantity>
-struct Trade {
+template<OrderedArithmetic Price, OrderedArithmetic Quantity> struct Trade {
     OrderId buy_order_id;
     OrderId sell_order_id;
     Price price;
