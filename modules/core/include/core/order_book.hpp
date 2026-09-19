@@ -91,6 +91,40 @@ public:
         return true;
     }
 
+    /// Sums the quantity resting at prices satisfying `accepts`, walking from
+    /// the lowest price outward, stopping at the first price that fails (the
+    /// map is price-ascending, so once one fails, every higher price does too).
+    /// Non-mutating - used to check Fill-Or-Kill feasibility before committing
+    /// any fills.
+    template<class Predicate>
+    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts) const {
+        Quantity total{};
+        for (const auto& [price, level] : levels_) {
+            if (!accepts(price)) {
+                break;
+            }
+            for (const auto& entry : level) {
+                total = total + entry.order.quantity;
+            }
+        }
+        return total;
+    }
+
+    /// Same, walking from the highest price outward instead
+    template<class Predicate>
+    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts) const {
+        Quantity total{};
+        for (auto it = levels_.rbegin(); it != levels_.rend(); ++it) {
+            if (!accepts(it->first)) {
+                break;
+            }
+            for (const auto& entry : it->second) {
+                total = total + entry.order.quantity;
+            }
+        }
+        return total;
+    }
+
     [[nodiscard]] bool empty() const noexcept { return levels_.empty(); }
 
     [[nodiscard]] std::optional<BookEntry<Price, Quantity>> best_lowest() const {
@@ -159,6 +193,15 @@ public:
         if (removed) {
             index_.erase(found);
         }
+    }
+
+    /// Total resting quantity on `side` matchable under `accepts` (a
+    /// predicate on price), without mutating anything - used by MatchingEngine
+    /// to check Fill-Or-Kill feasibility up front.
+    template<class Predicate>
+    [[nodiscard]] Quantity total_matchable(Side side, Predicate accepts) const {
+        return side == Side::Buy ? levels_for(side).total_matchable_ascending(accepts)
+                                 : levels_for(side).total_matchable_descending(accepts);
     }
 
     [[nodiscard]] bool empty(Side side) const noexcept { return levels_for(side).empty(); }
