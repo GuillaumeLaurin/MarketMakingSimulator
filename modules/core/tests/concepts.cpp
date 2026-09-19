@@ -19,18 +19,18 @@ struct NoDefault {
 
     auto operator<=>(const NoDefault&) const = default;
 
-    friend NoDefault operator+(NoDefault a, NoDefault b) { return NoDefault{a.value + b.value}; }
+    NoDefault operator+(const NoDefault& other) const { return NoDefault{value + other.value}; }
 
-    friend NoDefault operator-(NoDefault a, NoDefault b) { return NoDefault{a.value - b.value}; }
+    NoDefault operator-(const NoDefault& other) const { return NoDefault{value - other.value}; }
 };
 
 /// Default-constructible and arithmetic, but not ordered.
 struct Unordered {
     int value = 0;
 
-    friend Unordered operator+(Unordered a, Unordered b) { return {a.value + b.value}; }
+    Unordered operator+(const Unordered& other) const { return {value + other.value}; }
 
-    friend Unordered operator-(Unordered a, Unordered b) { return {a.value - b.value}; }
+    Unordered operator-(const Unordered& other) const { return {value - other.value}; }
 };
 
 } // namespace

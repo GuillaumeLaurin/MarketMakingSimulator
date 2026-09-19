@@ -107,8 +107,8 @@ public:
     /// gets an id, even though nothing observable happens for it beyond
     /// whatever Trades were emitted.
     OrderId submit(const Order<Price, Quantity>& order) {
-        return std::visit([this](const auto& concrete_order) { return submit_one(concrete_order); },
-                          order);
+        return std::visit(
+            [this](const auto& concrete_order) { return this->submit_one(concrete_order); }, order);
     }
 
     /// Cancels a resting order. Returns false if id isn't currently
