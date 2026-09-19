@@ -92,8 +92,12 @@ TEST_CASE("The aliased MatchingEngine matches with an integer Quantity end to en
     engine.add_observer(recorder);
 
     const mm::OrderId sell_id =
-        engine.submit(mm::LimitOrder{mm::Side::Sell, 100.0, 10, mm::TimeInForce::GTC});
-    static_cast<void>(engine.submit(mm::MarketOrder{mm::Side::Buy, 4, mm::MarketTimeInForce::IOC}));
+        engine.submit(mm::LimitOrder{.side = mm::Side::Sell,
+                                     .price = 100.0,
+                                     .quantity = 10,
+                                     .time_in_force = mm::TimeInForce::GTC});
+    static_cast<void>(engine.submit(mm::MarketOrder{
+        .side = mm::Side::Buy, .quantity = 4, .time_in_force = mm::MarketTimeInForce::IOC}));
 
     REQUIRE(recorder.trades.size() == 1);
     CHECK(recorder.trades[0].price == 100.0);
@@ -103,7 +107,8 @@ TEST_CASE("The aliased MatchingEngine matches with an integer Quantity end to en
 
     // The rest of the resting order is consumed: with integers the level
     // reaches exactly zero and disappears, no floating-point dust left.
-    static_cast<void>(engine.submit(mm::MarketOrder{mm::Side::Buy, 6, mm::MarketTimeInForce::IOC}));
+    static_cast<void>(engine.submit(mm::MarketOrder{
+        .side = mm::Side::Buy, .quantity = 6, .time_in_force = mm::MarketTimeInForce::IOC}));
 
     REQUIRE(recorder.trades.size() == 2);
     CHECK(engine.book().empty(mm::Side::Sell));

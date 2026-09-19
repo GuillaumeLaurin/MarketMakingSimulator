@@ -23,7 +23,8 @@ using mms::core::TimeInForce;
 namespace {
 
 LimitOrder<double, double> resting(Side side, double price, double quantity) {
-    return LimitOrder<double, double>{side, price, quantity, TimeInForce::GTC};
+    return LimitOrder<double, double>{
+        .side = side, .price = price, .quantity = quantity, .time_in_force = TimeInForce::GTC};
 }
 
 /// The predicate a Buy aggressor at buy_price would use.

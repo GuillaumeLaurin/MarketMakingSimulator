@@ -29,9 +29,10 @@ TEST_CASE("<core/core.hpp> exposes the whole core module", "[core][umbrella]") {
 
     // side.hpp, order_id.hpp, order.hpp
     const OrderId resting_id = OrderId{0};
-    const Order<double, double> sell =
-        LimitOrder<double, double>{Side::Sell, 100.0, 10.0, TimeInForce::GTC};
-    const Order<double, double> buy = MarketOrder<double>{Side::Buy, 4.0, MarketTimeInForce::IOC};
+    const Order<double, double> sell = LimitOrder<double, double>{
+        .side = Side::Sell, .price = 100.0, .quantity = 10.0, .time_in_force = TimeInForce::GTC};
+    const Order<double, double> buy = MarketOrder<double>{
+        .side = Side::Buy, .quantity = 4.0, .time_in_force = MarketTimeInForce::IOC};
 
     // matching_engine.hpp and order_book.hpp
     MatchingEngine<double, double> engine;
