@@ -8,6 +8,7 @@
 #include <mm/pnl.hpp>
 #include <mm/position.hpp>
 #include <mm/quote.hpp>
+#include <mm/requote.hpp>
 #include <mm/risk.hpp>
 #include <mm/tick.hpp>
 #include <mm/types.hpp>
