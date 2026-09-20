@@ -4,6 +4,7 @@
 /// \file
 /// Umbrella for the MMS::mm layer
 
+#include <mm/position.hpp>
 #include <mm/quote.hpp>
 #include <mm/tick.hpp>
 #include <mm/types.hpp>
