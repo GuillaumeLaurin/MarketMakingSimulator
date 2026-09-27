@@ -20,7 +20,8 @@ using mms::core::TimeInForce;
 namespace {
 
 LimitOrder<double, double> make_order(Side side, double price, double quantity) {
-    return LimitOrder<double, double>{side, price, quantity, TimeInForce::GTC};
+    return LimitOrder<double, double>{
+        .side = side, .price = price, .quantity = quantity, .time_in_force = TimeInForce::GTC};
 }
 
 } // namespace

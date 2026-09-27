@@ -12,5 +12,5 @@ mms_add_module(simulation
     PUBLIC_DEPENDS
         MMS::core
         MMS::math
-        MMS::mms
+        MMS::mm
 )

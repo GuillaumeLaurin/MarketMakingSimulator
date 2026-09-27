@@ -46,11 +46,12 @@ struct RecordingObserver : MatchingEngineObserver<double, double> {
 };
 
 Order<double, double> limit(Side side, double price, double quantity, TimeInForce tif) {
-    return LimitOrder<double, double>{side, price, quantity, tif};
+    return LimitOrder<double, double>{
+        .side = side, .price = price, .quantity = quantity, .time_in_force = tif};
 }
 
 Order<double, double> market(Side side, double quantity, MarketTimeInForce tif) {
-    return MarketOrder<double>{side, quantity, tif};
+    return MarketOrder<double>{.side = side, .quantity = quantity, .time_in_force = tif};
 }
 
 } // namespace
