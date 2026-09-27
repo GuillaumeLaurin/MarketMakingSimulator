@@ -63,11 +63,9 @@ public:
         for (const LedgerAsset& asset : assets) {
             require_finite(asset.initial_mid, "initial mid");
             require_finite(asset.maker_fee_bps, "maker fee");
-            assets_.push_back(AssetState{
-                .position = Position{},
-                .last_mid = asset.initial_mid,
-                .maker_fee_bps = asset.maker_fee_bps
-            });
+            assets_.push_back(AssetState{.position = Position{},
+                                         .last_mid = asset.initial_mid,
+                                         .maker_fee_bps = asset.maker_fee_bps});
         }
     }
 
@@ -90,8 +88,9 @@ public:
         AssetState& state = assets_.at(asset);
         require_finite(mid, "mid");
 
-        const Quantity held_before  = state.position.quantity();
-        static_cast<void>(state.position.on_fill(side, price, quantity)); // validates price, quantity
+        const Quantity held_before = state.position.quantity();
+        static_cast<void>(
+            state.position.on_fill(side, price, quantity)); // validates price, quantity
 
         state.inventory += to_double(held_before) * (mid - state.last_mid);
         state.last_mid = mid;
@@ -122,13 +121,11 @@ public:
     /// The P&L of one asset, unrealized valued at its last mid.
     [[nodiscard]] PnlBreakdown breakdown(AssetId asset) const {
         const AssetState& state = assets_.at(asset);
-        return PnlBreakdown{
-            .realized = state.position.realized_pnl(),
-            .unrealized = state.position.unrealized_pnl(state.last_mid),
-            .spread_capture = state.spread_capture,
-            .inventory = state.inventory,
-            .fees = state.fees
-        };
+        return PnlBreakdown{.realized = state.position.realized_pnl(),
+                            .unrealized = state.position.unrealized_pnl(state.last_mid),
+                            .spread_capture = state.spread_capture,
+                            .inventory = state.inventory,
+                            .fees = state.fees};
     }
 
     /// The P&L of the whole portfolio: the sum over every asset.
@@ -139,7 +136,6 @@ public:
         }
         return sum;
     }
-
 
 private:
     static constexpr double basis_point = 1.0e-4;

@@ -35,7 +35,7 @@ struct AssetQuotes {
     [[nodiscard]] const std::optional<Quote>& on(Side side) const noexcept {
         return side == Side::Buy ? bid : ask;
     }
-    
+
     [[nodiscard]] std::optional<Quote>& on(Side side) noexcept {
         return side == Side::Buy ? bid : ask;
     }
@@ -50,12 +50,10 @@ using QuoteSet = std::vector<AssetQuotes>;
 /// A quote is a passive resting order, so it always goes out Good-Till-Cancel.
 /// This is the one place that knowledge lives; simulation does not repeat it.
 [[nodiscard]] inline LimitOrder to_limit_order(Side side, const Quote& quote) noexcept {
-    return LimitOrder{
-        .side = side, 
-        .price = quote.price, 
-        .quantity = quote.quantity, 
-        .time_in_force = TimeInForce::GTC
-    };
+    return LimitOrder{.side = side,
+                      .price = quote.price,
+                      .quantity = quote.quantity,
+                      .time_in_force = TimeInForce::GTC};
 }
 
 } // namespace mms::mm

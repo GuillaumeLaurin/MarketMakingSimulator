@@ -13,10 +13,11 @@
 #include <stdexcept>
 #include <vector>
 
-#include <math/avellaneda_stoikov.hpp>
-#include <math/types.hpp>
 #include <mm/quote.hpp>
 #include <mm/types.hpp>
+
+#include <math/avellaneda_stoikov.hpp>
+#include <math/types.hpp>
 
 namespace mms::mm {
 
@@ -26,7 +27,7 @@ struct RiskLimits {
     std::vector<Quantity> max_abs_position;
 
     /// Cap on the portfolio risk q^T Sigma q. Disabled when empty. Must be
-    /// finite and > 0 when set.    
+    /// finite and > 0 when set.
     std::optional<double> max_portfolio_risk;
 };
 
@@ -34,12 +35,8 @@ struct RiskLimits {
 /// `position`? Yes if a full fill keeps |position| within `max_abs`, or if it
 /// at least brings |position| down (so an asset already past the limit can
 /// still quote the side that reduces it).
-[[nodiscard]] inline bool position_limit_allows(
-    double position,
-    Side side,
-    Quantity quantity,
-    Quantity max_abs
-) noexcept {
+[[nodiscard]] inline bool
+position_limit_allows(double position, Side side, Quantity quantity, Quantity max_abs) noexcept {
     const double filled = to_double(quantity);
     const double after = (side == Side::Buy) ? position + filled : position - filled;
     return std::fabs(after) <= to_double(max_abs) || std::fabs(after) < std::fabs(position);
@@ -61,10 +58,10 @@ inline void validate_risk_inputs(const QuoteSet& quotes,
                                  const math::Vector& sigma_q) {
     const std::size_t assets = quotes.size();
 
-    if (limits.max_abs_position.size() != assets ||
-        static_cast<std::size_t>(q.size()) != assets || 
+    if (limits.max_abs_position.size() != assets || static_cast<std::size_t>(q.size()) != assets ||
         static_cast<std::size_t>(sigma_q.size()) != assets) {
-        throw std::invalid_argument("risk: quotes, limits, q and sigma_q must have one entry per asset");
+        throw std::invalid_argument(
+            "risk: quotes, limits, q and sigma_q must have one entry per asset");
     }
 
     for (const Quantity max_abs : limits.max_abs_position) {
@@ -99,19 +96,19 @@ inline void apply_limits(QuoteSet& quotes,
                          const math::Vector& sigma_q) {
     detail::validate_risk_inputs(quotes, limits, q, sigma_q);
 
-    const bool over_cap = 
+    const bool over_cap =
         limits.max_portfolio_risk.has_value() &&
         math::avellaneda_stoikov::inventory_risk(q, sigma_q) > *limits.max_portfolio_risk;
-    
+
     for (AssetId asset = 0; asset < quotes.size(); ++asset) {
         const auto index = static_cast<Eigen::Index>(asset);
-        for (const Side side : { Side::Buy, Side::Sell }) {
+        for (const Side side : {Side::Buy, Side::Sell}) {
             std::optional<Quote>& quote = quotes[asset].on(side);
             if (!quote.has_value()) {
                 continue;
             }
             const bool position_ok = position_limit_allows(
-                q(index), side, quote->quantity,limits.max_abs_position[asset]);
+                q(index), side, quote->quantity, limits.max_abs_position[asset]);
             const bool cap_ok = !over_cap || portfolio_cap_allows(side, sigma_q(index));
             if (!position_ok || !cap_ok) {
                 quote.reset();

@@ -12,13 +12,14 @@
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
 
-#include <math/types.hpp>
 #include <mm/quote.hpp>
 #include <mm/types.hpp>
+
+#include <math/types.hpp>
 
 namespace mms::mm {
 
@@ -44,10 +45,7 @@ struct MarketView {
 [[nodiscard]] inline MarketView
 make_market_view(math::Vector mids, const std::vector<Quantity>& quantities, double time) {
     return MarketView{
-        .mids = std::move(mids),
-        .inventory = inventory_vector(quantities),
-        .time = time
-    };
+        .mids = std::move(mids), .inventory = inventory_vector(quantities), .time = time};
 }
 
 class QuotingStrategy {
@@ -65,7 +63,8 @@ public:
     /// is finite.
     void on_market_data(const math::Vector& mids, double dt) {
         if (!std::isfinite(dt) || dt <= 0.0) {
-            throw std::invalid_argument("QuotingStrategy::on_market_data: dt must be finite and > 0");
+            throw std::invalid_argument(
+                "QuotingStrategy::on_market_data: dt must be finite and > 0");
         }
         require_one_per_asset(mids.size(), "mids");
         if (!mids.allFinite()) {
@@ -87,7 +86,8 @@ public:
         }
         QuoteSet quotes = do_quote(view);
         if (quotes.size() != asset_count()) {
-            throw std::logic_error("QuotingStrategy::quote: the strategy returned the wrong number of assets");
+            throw std::logic_error(
+                "QuotingStrategy::quote: the strategy returned the wrong number of assets");
         }
         return quotes;
     }

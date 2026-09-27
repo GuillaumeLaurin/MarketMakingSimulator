@@ -11,12 +11,13 @@
 #include <variant>
 #include <vector>
 
-#include <math/types.hpp>
 #include <mm/horizon.hpp>
 #include <mm/mm_export.hpp>
 #include <mm/quoting_strategy.hpp>
 #include <mm/risk.hpp>
 #include <mm/types.hpp>
+
+#include <math/types.hpp>
 
 namespace mms::mm {
 
@@ -45,7 +46,7 @@ using EstimatorSpec = std::variant<ConstantSpec, EwmaSpec, RollingSpec>;
 /// every per-asset vector (k, estimators, quote_sizes, tick_sizes,
 /// limits.max_abs_position); their common size is the asset count. Plain
 /// data, no invariant enforced here - make_strategy forwards it as-is and
-/// the strategy's own constructor validates everything it actually uses. 
+/// the strategy's own constructor validates everything it actually uses.
 struct StrategyConfig {
     double gamma;
     math::Vector k;
@@ -63,9 +64,8 @@ struct StrategyConfig {
 /// AvellanedaStoikovStrategy is the only one that exists today. Throws
 /// std::invalid_argument for whatever the concrete strategy's own
 /// constructor rejects - this function performs no validation of its own.
-[[nodiscard]] MMS_MM_EXPORT std::unique_ptr<QuotingStrategy> make_strategy(
-    const StrategyConfig& config
-);
+[[nodiscard]] MMS_MM_EXPORT std::unique_ptr<QuotingStrategy>
+make_strategy(const StrategyConfig& config);
 
 } // namespace mms::mm
 

@@ -73,8 +73,7 @@ public:
         quantity_ += signed_fill;
         realized_pnl_ += realized;
         return realized;
-    }   
-
+    }
 
 private:
     Quantity quantity_ = 0;

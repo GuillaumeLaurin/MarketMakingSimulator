@@ -1,8 +1,6 @@
 /// \file
 /// Implementation of AvellanedaStoikovStrategy (<mm/avellaneda_stoikov_strategy.hpp>).
 
-#include <mm/avellaneda_stoikov_strategy.hpp>
-
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -10,12 +8,14 @@
 #include <utility>
 #include <vector>
 
-#include <math/covariance/covariance_matrix.hpp>
+#include <mm/avellaneda_stoikov_strategy.hpp>
 #include <mm/tick.hpp>
+
+#include <math/covariance/covariance_matrix.hpp>
 
 namespace mms::mm {
 
-namespace  {
+namespace {
 
 [[noreturn]] void reject(const char* message) {
     throw std::invalid_argument(std::string("AvellanedaStoikovStrategy: ") + message);
@@ -23,12 +23,12 @@ namespace  {
 
 } // namespace
 
-math::Vector sigma_times_q(const math::Vector& sigma,
-                           const math::Matrix& correlation,
-                           const math::Vector& q) {
+math::Vector
+sigma_times_q(const math::Vector& sigma, const math::Matrix& correlation, const math::Vector& q) {
     const Eigen::Index assets = sigma.size();
     if (q.size() != assets || correlation.rows() != assets || correlation.cols() != assets) {
-        throw std::invalid_argument("sigma_times_q: sigma, correlation and q must have matching sizes");
+        throw std::invalid_argument(
+            "sigma_times_q: sigma, correlation and q must have matching sizes");
     }
     return sigma.cwiseProduct(correlation * sigma.cwiseProduct(q));
 }
@@ -39,7 +39,7 @@ AssetQuotes make_asset_quotes(Price reservation, Price half_spread, Price tick, 
     }
     const BidAskTicks ticks =
         quote_ticks(reservation - half_spread, reservation + half_spread, tick);
-    
+
     AssetQuotes quotes;
     if (ticks.ask < 1) {
         return quotes;
@@ -51,7 +51,7 @@ AssetQuotes make_asset_quotes(Price reservation, Price half_spread, Price tick, 
     return quotes;
 }
 
-AvellanedaStoikovStrategy::AvellanedaStoikovStrategy(AvellanedaStoikovSettings settings) 
+AvellanedaStoikovStrategy::AvellanedaStoikovStrategy(AvellanedaStoikovSettings settings)
     : settings_(std::move(settings)) {
     const Eigen::Index assets = settings_.params.k.size();
     if (assets == 0) {
@@ -59,8 +59,7 @@ AvellanedaStoikovStrategy::AvellanedaStoikovStrategy(AvellanedaStoikovSettings s
     }
     const auto count = static_cast<std::size_t>(assets);
     if (settings_.volatility.size() != count || settings_.quote_sizes.size() != count ||
-        settings_.tick_sizes.size() != count ||
-        settings_.limits.max_abs_position.size() != count) {
+        settings_.tick_sizes.size() != count || settings_.limits.max_abs_position.size() != count) {
         reject("volatility, quote sizes, tick sizes and limits must have one entry per asset");
     }
     if (settings_.correlation.rows() != assets || settings_.correlation.cols() != assets) {
@@ -70,9 +69,9 @@ AvellanedaStoikovStrategy::AvellanedaStoikovStrategy(AvellanedaStoikovSettings s
         reject("min_samples must be >= 0");
     }
 
-    liquidity_half_spread_ = math::avellaneda_stoikov::liquidity_half_spread(
-        settings_.params.gamma, settings_.params.k);
-    
+    liquidity_half_spread_ =
+        math::avellaneda_stoikov::liquidity_half_spread(settings_.params.gamma, settings_.params.k);
+
     for (const Quantity size : settings_.quote_sizes) {
         if (size <= 0) {
             reject("every quote size must be > 0");
@@ -95,7 +94,7 @@ AvellanedaStoikovStrategy::AvellanedaStoikovStrategy(AvellanedaStoikovSettings s
 
 math::Vector AvellanedaStoikovStrategy::volatilities() const {
     math::Vector sigma(static_cast<Eigen::Index>(asset_count()));
-    for (std::size_t asset = 0; asset < asset_count(); ++ asset) {
+    for (std::size_t asset = 0; asset < asset_count(); ++asset) {
         sigma(static_cast<Eigen::Index>(asset)) = settings_.volatility[asset].sigma();
     }
     return sigma;

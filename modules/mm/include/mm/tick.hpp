@@ -95,10 +95,7 @@ struct BidAskTicks {
     if (bid_price > ask_price) {
         throw std::invalid_argument("tick: bid price must not exceed ask price");
     }
-    BidAskTicks ticks{
-        .bid = bid_ticks(bid_price, tick),
-        .ask = ask_ticks(ask_price, tick)
-    };
+    BidAskTicks ticks{.bid = bid_ticks(bid_price, tick), .ask = ask_ticks(ask_price, tick)};
     if (ticks.ask <= ticks.bid) {
         ticks.ask = ticks.bid + 1;
     }

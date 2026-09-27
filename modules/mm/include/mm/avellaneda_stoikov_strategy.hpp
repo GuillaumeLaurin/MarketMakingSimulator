@@ -14,10 +14,6 @@
 #include <optional>
 #include <vector>
 
-#include <math/avellaneda_stoikov.hpp>
-#include <math/stats/volatility.hpp>
-#include <math/types.hpp>
-#include "math/stats/traits.hpp"
 #include <mm/horizon.hpp>
 #include <mm/mm_export.hpp>
 #include <mm/quote.hpp>
@@ -25,14 +21,19 @@
 #include <mm/risk.hpp>
 #include <mm/types.hpp>
 
+#include <math/avellaneda_stoikov.hpp>
+#include <math/stats/volatility.hpp>
+#include <math/types.hpp>
+
+#include "math/stats/traits.hpp"
+
 namespace mms::mm {
 
 /// Sigma * q where Sigma = D R D, D = diag(sigma) and R the correlation
 /// matrix: sigma_i * sum_j R_ij * sigma_j * q_j. Built directly, without ever
 /// forming Sigma or its Cholesky factor.
-[[nodiscard]] MMS_MM_EXPORT math::Vector sigma_times_q(const math::Vector& sigma,
-                                                       const math::Matrix& correlation,
-                                                       const math::Vector& q);
+[[nodiscard]] MMS_MM_EXPORT math::Vector
+sigma_times_q(const math::Vector& sigma, const math::Matrix& correlation, const math::Vector& q);
 
 /// The quotes on one asset for a given reservation price and half-spread:
 /// bid rounded down and ask rounded up to the tick (never crossed, at least
@@ -42,6 +43,7 @@ namespace mms::mm {
                                                           Price half_spread,
                                                           Price tick,
                                                           Quantity size);
+
 /// Everything the strategy is built from. One entry per asset in every vector,
 /// in AssetId order (their common size is the number of assets).
 struct AvellanedaStoikovSettings {
@@ -70,7 +72,7 @@ public:
     /// the first problem: sizes that disagree, an invalid gamma, k, tick, size
     /// or horizon, a correlation that is not a valid positive-definite matrix.
     explicit AvellanedaStoikovStrategy(AvellanedaStoikovSettings settings);
-    
+
     [[nodiscard]] std::size_t asset_count() const noexcept override {
         return settings_.quote_sizes.size();
     }

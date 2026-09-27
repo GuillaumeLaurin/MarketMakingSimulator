@@ -68,7 +68,8 @@ needs_replacing(const Quote& resting, const Quote& wanted, Price tick, Ticks thr
     if (resting.quantity != wanted.quantity) {
         return true;
     }
-    const Ticks moved = std::abs(nearest_ticks(wanted.price, tick)  - nearest_ticks(resting.price, tick));
+    const Ticks moved =
+        std::abs(nearest_ticks(wanted.price, tick) - nearest_ticks(resting.price, tick));
     return moved >= threshold;
 }
 
@@ -89,7 +90,8 @@ needs_replacing(const Quote& resting, const Quote& wanted, Price tick, Ticks thr
         throw std::invalid_argument("requote: the threshold must be >= 0");
     }
     if (live.size() != desired.size() || tick_sizes.size() != desired.size()) {
-        throw std::invalid_argument("requote: desired, live and tick_sizes must have one entry per asset");
+        throw std::invalid_argument(
+            "requote: desired, live and tick_sizes must have one entry per asset");
     }
 
     for (const Price tick : tick_sizes) {
@@ -103,21 +105,16 @@ needs_replacing(const Quote& resting, const Quote& wanted, Price tick, Ticks thr
             const std::optional<Quote>& wanted = desired[asset].on(side);
             const std::optional<LiveQuote>& resting = live[asset].on(side);
 
-            const bool replace = wanted.has_value() && resting.has_value() &&
-                                 needs_replacing(resting->quote, *wanted, tick_sizes[asset], threshold);
-            
+            const bool replace =
+                wanted.has_value() && resting.has_value() &&
+                needs_replacing(resting->quote, *wanted, tick_sizes[asset], threshold);
+
             if (resting.has_value() && (!wanted.has_value() || replace)) {
-                plan.cancels.push_back(CancelRequest{
-                    .asset = asset,
-                    .id = resting->id
-                });
+                plan.cancels.push_back(CancelRequest{.asset = asset, .id = resting->id});
             }
             if (wanted.has_value() && (!resting.has_value() || replace)) {
-                plan.submits.push_back(SubmitRequest{
-                    .asset = asset,
-                    .side = side,
-                    .quote = *wanted
-                });
+                plan.submits.push_back(
+                    SubmitRequest{.asset = asset, .side = side, .quote = *wanted});
             }
         }
     }
