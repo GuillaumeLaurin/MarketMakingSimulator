@@ -12,6 +12,7 @@
 #include <mm/quoting_strategy.hpp>
 #include <mm/requote.hpp>
 #include <mm/risk.hpp>
+#include <mm/strategy_config.hpp>
 #include <mm/tick.hpp>
 #include <mm/types.hpp>
 
