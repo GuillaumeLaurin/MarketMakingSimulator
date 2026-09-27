@@ -23,7 +23,7 @@ mm::HorizonPolicy constant(double tau) {
     return mm::ConstantHorizon{.tau = tau};
 }
 
-mm::HorizonPolicy finite(double end_time, double min_tau = 0.0) {
+mm::HorizonPolicy finite_horizon(double end_time, double min_tau = 0.0) {
     return mm::FiniteHorizon{.end_time = end_time, .min_tau = min_tau};
 }
 
@@ -39,7 +39,7 @@ TEST_CASE("A constant horizon returns the same tau at every instant", "[mm][hori
 }
 
 TEST_CASE("A finite horizon shrinks linearly to the end time", "[mm][horizon]") {
-    const mm::HorizonPolicy policy = finite(100.0);
+    const mm::HorizonPolicy policy = finite_horizon(100.0);
 
     CHECK(mm::tau_at(policy, 0.0) == 100.0);
     CHECK(mm::tau_at(policy, 40.0) == 60.0);
@@ -47,18 +47,18 @@ TEST_CASE("A finite horizon shrinks linearly to the end time", "[mm][horizon]") 
 }
 
 TEST_CASE("A finite horizon reaches exactly its floor at the end time", "[mm][horizon]") {
-    CHECK(mm::tau_at(finite(100.0), 100.0) == 0.0);
-    CHECK(mm::tau_at(finite(100.0, 5.0), 100.0) == 5.0);
+    CHECK(mm::tau_at(finite_horizon(100.0), 100.0) == 0.0);
+    CHECK(mm::tau_at(finite_horizon(100.0, 5.0), 100.0) == 5.0);
 }
 
 TEST_CASE("A finite horizon never goes negative after the end time", "[mm][horizon]") {
-    CHECK(mm::tau_at(finite(100.0), 150.0) == 0.0);
-    CHECK(mm::tau_at(finite(100.0, 5.0), 150.0) == 5.0);
-    CHECK(mm::tau_at(finite(100.0), 1.0e9) == 0.0);
+    CHECK(mm::tau_at(finite_horizon(100.0), 150.0) == 0.0);
+    CHECK(mm::tau_at(finite_horizon(100.0, 5.0), 150.0) == 5.0);
+    CHECK(mm::tau_at(finite_horizon(100.0), 1.0e9) == 0.0);
 }
 
 TEST_CASE("The floor holds once the remaining time drops below it", "[mm][horizon]") {
-    const mm::HorizonPolicy policy = finite(100.0, 5.0);
+    const mm::HorizonPolicy policy = finite_horizon(100.0, 5.0);
 
     CHECK(mm::tau_at(policy, 90.0) == 10.0); // above the floor: the remaining time
     CHECK(mm::tau_at(policy, 95.0) == 5.0);  // exactly at the floor
@@ -67,15 +67,15 @@ TEST_CASE("The floor holds once the remaining time drops below it", "[mm][horizo
 }
 
 TEST_CASE("A floor larger than the whole horizon applies from the start", "[mm][horizon]") {
-    CHECK(mm::tau_at(finite(10.0, 20.0), 0.0) == 20.0);
+    CHECK(mm::tau_at(finite_horizon(10.0, 20.0), 0.0) == 20.0);
 }
 
 TEST_CASE("A finite horizon accepts a time before zero", "[mm][horizon]") {
-    CHECK(mm::tau_at(finite(100.0), -10.0) == 110.0);
+    CHECK(mm::tau_at(finite_horizon(100.0), -10.0) == 110.0);
 }
 
 TEST_CASE("A finite horizon is never negative and never grows as time advances", "[mm][horizon]") {
-    const mm::HorizonPolicy policy = finite(100.0);
+    const mm::HorizonPolicy policy = finite_horizon(100.0);
     std::vector<double> violations;
     double previous = mm::tau_at(policy, -10.0);
 
@@ -120,23 +120,23 @@ TEST_CASE("A constant horizon accepts a tiny positive tau", "[mm][horizon]") {
 
 TEST_CASE("A finite horizon rejects a non-finite end time", "[mm][horizon]") {
     for (const double bad : {quiet_nan, infinity, -infinity}) {
-        CHECK_THROWS_AS(mm::tau_at(finite(bad), 0.0), std::invalid_argument);
+        CHECK_THROWS_AS(mm::tau_at(finite_horizon(bad), 0.0), std::invalid_argument);
     }
 }
 
 TEST_CASE("A finite horizon rejects a negative or non-finite floor", "[mm][horizon]") {
     for (const double bad : {-0.001, quiet_nan, infinity, -infinity}) {
-        CHECK_THROWS_AS(mm::tau_at(finite(100.0, bad), 0.0), std::invalid_argument);
+        CHECK_THROWS_AS(mm::tau_at(finite_horizon(100.0, bad), 0.0), std::invalid_argument);
     }
 }
 
 TEST_CASE("A zero floor is valid", "[mm][horizon]") {
-    CHECK_NOTHROW(mm::tau_at(finite(100.0, 0.0), 0.0));
+    CHECK_NOTHROW(mm::tau_at(finite_horizon(100.0, 0.0), 0.0));
 }
 
 TEST_CASE("Both policies reject a non-finite time", "[mm][horizon]") {
     for (const double bad : {quiet_nan, infinity, -infinity}) {
         CHECK_THROWS_AS(mm::tau_at(constant(2.0), bad), std::invalid_argument);
-        CHECK_THROWS_AS(mm::tau_at(finite(100.0), bad), std::invalid_argument);
+        CHECK_THROWS_AS(mm::tau_at(finite_horizon(100.0), bad), std::invalid_argument);
     }
 }
