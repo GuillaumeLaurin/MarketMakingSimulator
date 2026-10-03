@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <variant>
 #include <vector>
 
 #include <core/latency_queue.hpp>
@@ -24,10 +25,11 @@
 #include <mm/requote.hpp>
 #include <mm/types.hpp>
 #include <simulation/simulation_config.hpp>
+#include <simulation/simulation_export.hpp>
 
 namespace mms::simulation {
 
-class World {
+class MMS_SIMULATION_EXPORT World {
 public:
     /// Builds everything from `config`: the CovarianceMatrix, the one
     /// PriceProcess, one MatchingEngine per asset, the PnlLedger, the

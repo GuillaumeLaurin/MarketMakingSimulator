@@ -4,6 +4,7 @@
 /// \file
 /// Umbrella for the MMS::simulation layer
 
+#include <simulation/adverse_flow.hpp>
 #include <simulation/asset_spec.hpp>
 #include <simulation/delay_spec.hpp>
 #include <simulation/latency_config.hpp>
