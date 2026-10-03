@@ -8,6 +8,7 @@
 #include <simulation/asset_spec.hpp>
 #include <simulation/delay_spec.hpp>
 #include <simulation/latency_config.hpp>
+#include <simulation/latency.hpp>
 #include <simulation/price_process_spec.hpp>
 #include <simulation/results.hpp>
 #include <simulation/simulation_config.hpp>
