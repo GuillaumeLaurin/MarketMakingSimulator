@@ -148,9 +148,8 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
 } // namespace
 
 World::World(const SimulationConfig& config)
-    : price_process_(build_price_process(config)), engines_(config.assets.size()),
-      quote_latency_queue_(), ledger_(gather_ledger_assets(config)),
-      strategy_(mm::make_strategy(config.strategy)),
+    : price_process_(build_price_process(config)), engines_(config.assets.size()), event_queue_(),
+      ledger_(gather_ledger_assets(config)), strategy_(mm::make_strategy(config.strategy)),
       adverse_flow_engines_(build_engines(config, math::rng::Subsystem::AdverseFlow)),
       latency_engines_(build_engines(config, math::rng::Subsystem::Latency)) {
     if (strategy_->asset_count() != config.assets.size()) {

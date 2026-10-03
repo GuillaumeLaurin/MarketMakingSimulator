@@ -30,6 +30,19 @@
 
 namespace mms::simulation {
 
+/// One adverse-flow order on its way to the exchange of one asset.
+struct AdverseOrder {
+    mm::AssetId asset;
+    mm::MarketOrder order;
+};
+
+/// Everything that can be in flight: the market maker's own requests and
+/// adverse flow. One shared queue gives a single, time-ordered view of all
+/// of it (SIM27).
+using SimulationEvent = std::variant<mm::SubmitRequest, mm::CancelRequest, AdverseOrder>;
+
+using EventQueue = core::LatencyQueue<SimulationEvent>;
+
 class MMS_SIMULATION_EXPORT World {
 public:
     /// Builds everything from `config`: the CovarianceMatrix, the one
@@ -68,10 +81,10 @@ public:
 
     [[nodiscard]] const mm::QuotingStrategy& strategy() const noexcept { return *strategy_; }
 
-    using QuoteLatencyQueue =
-        core::LatencyQueue<std::variant<mm::SubmitRequest, mm::CancelRequest>>;
-
-    [[nodiscard]] QuoteLatencyQueue& quote_latency_queue() noexcept { return quote_latency_queue_; }
+    /// The one queue of everything still on its way to an exchange: the
+    /// market maker's quote submits and cancels and the adverse-flow orders,
+    /// all assets together, released in (due time, insertion order) order.
+    [[nodiscard]] EventQueue& event_queue() noexcept { return event_queue_; }
 
     /// This asset's own RngEngine for drawing adverse-flow occurrences
     /// (arrival count, direction, size). Persists across ticks: the caller
@@ -91,7 +104,7 @@ public:
 private:
     std::unique_ptr<math::process::PriceProcess> price_process_;
     std::vector<mm::MatchingEngine> engines_;
-    QuoteLatencyQueue quote_latency_queue_;
+    EventQueue event_queue_;
     mm::PnlLedger ledger_;
     std::unique_ptr<mm::QuotingStrategy> strategy_;
     std::vector<math::rng::RngEngine> adverse_flow_engines_;

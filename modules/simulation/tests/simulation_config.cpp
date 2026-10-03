@@ -122,6 +122,29 @@ TEST_CASE("SimulationConfig::dt and tick_count are the documented types",
     STATIC_REQUIRE(std::is_same_v<decltype(sim::SimulationConfig::master_seed), math::rng::Seed>);
 }
 
+TEST_CASE(
+    "SimulationConfig::requote_threshold_ticks defaults to one tick and holds what it is given",
+    "[simulation][simulation_config]") {
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(sim::SimulationConfig::requote_threshold_ticks), mm::Ticks>);
+
+    sim::SimulationConfig config{
+        .assets = {minimal_asset(100.0)},
+        .correlation = math::Matrix::Identity(1, 1),
+        .process = sim::RandomWalkSpec{},
+        .strategy = minimal_strategy(1),
+        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
+                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .master_seed = math::rng::Seed{1},
+        .dt = 1.0,
+        .tick_count = 10};
+
+    CHECK(config.requote_threshold_ticks == 1); // not listed above: the default
+
+    config.requote_threshold_ticks = 0;
+    CHECK(config.requote_threshold_ticks == 0);
+}
+
 TEST_CASE("SimulationConfig::strategy is a complete, independent mm::StrategyConfig",
           "[simulation][simulation_config]") {
     sim::SimulationConfig config{

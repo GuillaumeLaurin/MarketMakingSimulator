@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <mm/strategy_config.hpp>
+#include <mm/tick.hpp>
 
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
@@ -39,6 +40,12 @@ struct SimulationConfig {
     mm::StrategyConfig strategy;
 
     LatencyConfig latency;
+
+    /// A resting quote is replaced only once its price has moved by at least
+    /// this many ticks (or its size changed): mm::plan_requote's threshold.
+    /// 0 replaces every quote at every tick. Validated where it is used
+    /// (plan_requote throws on a negative value), not here.
+    mm::Ticks requote_threshold_ticks = 1;
 
     /// Expanded into every RngHub stream this run needs (price, adverse
     /// flow, latency), per asset, by World.

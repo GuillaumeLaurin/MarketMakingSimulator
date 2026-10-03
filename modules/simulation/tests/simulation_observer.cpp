@@ -32,11 +32,14 @@ namespace {
 class RecordingObserver final : public sim::SimulationObserver {
 public:
     std::vector<double> tick_starts;
+    std::vector<double> tick_ends;
     std::vector<std::pair<mm::AssetId, mm::Price>> marks;
     std::vector<std::pair<mm::AssetId, mm::AssetQuotes>> quotes;
     std::vector<std::tuple<mm::AssetId, mm::Trade, bool>> trades;
 
     void on_tick_start(double time) override { tick_starts.push_back(time); }
+
+    void on_tick_end(double time) override { tick_ends.push_back(time); }
 
     void on_mark(mm::AssetId asset, mm::Price mid) override { marks.emplace_back(asset, mid); }
 
@@ -67,6 +70,7 @@ TEST_CASE("A subclass overriding nothing behaves as a pure no-op (the base itsel
     SilentObserver observer;
 
     observer.on_tick_start(1.0);
+    observer.on_tick_end(1.0);
     observer.on_mark(0, 100.0);
     observer.on_quote(0, mm::AssetQuotes{});
     observer.on_trade(0, make_trade(100.0, 5), false);
@@ -83,6 +87,19 @@ TEST_CASE("A recording observer receives on_tick_start with the right time",
     observer.on_tick_start(1.0);
 
     CHECK(observer.tick_starts == std::vector<double>{0.0, 0.5, 1.0});
+}
+
+TEST_CASE("A recording observer receives on_tick_end with the right time, after on_tick_start",
+          "[simulation][observer]") {
+    RecordingObserver observer;
+
+    observer.on_tick_start(0.5);
+    observer.on_tick_end(0.5);
+    observer.on_tick_start(1.0);
+    observer.on_tick_end(1.0);
+
+    CHECK(observer.tick_starts == std::vector<double>{0.5, 1.0});
+    CHECK(observer.tick_ends == std::vector<double>{0.5, 1.0});
 }
 
 TEST_CASE("A recording observer receives on_mark with the asset and the mid",

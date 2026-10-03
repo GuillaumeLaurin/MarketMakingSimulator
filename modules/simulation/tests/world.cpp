@@ -173,25 +173,56 @@ TEST_CASE("An unknown asset id throws std::out_of_range on every per-asset acces
     CHECK_THROWS_AS(world.latency_engine(1), std::out_of_range);
 }
 
-TEST_CASE("The quote latency queue is a usable, empty portfolio-wide queue",
+TEST_CASE("The event queue is one empty queue for every kind of request, all assets",
           "[simulation][world]") {
     sim::World world(config_of({asset(100.0, 0.2), asset(50.0, 0.3)}));
 
-    REQUIRE(world.quote_latency_queue().empty());
+    REQUIRE(world.event_queue().empty());
 
-    world.quote_latency_queue().schedule(2.0, mm::CancelRequest{.asset = 1, .id = mm::OrderId{7}});
-    world.quote_latency_queue().schedule(
+    // Scheduled out of order, one of each kind, on different assets.
+    world.event_queue().schedule(2.0, mm::CancelRequest{.asset = 1, .id = mm::OrderId{7}});
+    world.event_queue().schedule(
+        3.0,
+        sim::AdverseOrder{.asset = 1,
+                          .order = mm::MarketOrder{.side = mm::Side::Buy,
+                                                   .quantity = 4,
+                                                   .time_in_force = mm::MarketTimeInForce::IOC}});
+    world.event_queue().schedule(
         1.0,
         mm::SubmitRequest{
             .asset = 0, .side = mm::Side::Buy, .quote = mm::Quote{.price = 99.0, .quantity = 5}});
 
-    const auto due = world.quote_latency_queue().drain_until(1.5);
+    const auto first = world.event_queue().drain_until(1.5);
+    REQUIRE(first.size() == 1);
+    REQUIRE(std::holds_alternative<mm::SubmitRequest>(first[0]));
+    CHECK(std::get<mm::SubmitRequest>(first[0]).asset == 0); // earliest first
 
-    REQUIRE(due.size() == 1);
-    REQUIRE(std::holds_alternative<mm::SubmitRequest>(due[0]));
-    CHECK(std::get<mm::SubmitRequest>(due[0]).asset ==
-          0); // earliest first, both assets share one queue
-    CHECK(world.quote_latency_queue().size() == 1);
+    const auto rest = world.event_queue().drain_until(10.0);
+    REQUIRE(rest.size() == 2);
+    CHECK(std::holds_alternative<mm::CancelRequest>(rest[0]));   // due at 2.0
+    REQUIRE(std::holds_alternative<sim::AdverseOrder>(rest[1])); // due at 3.0
+    CHECK(std::get<sim::AdverseOrder>(rest[1]).order.quantity == 4);
+    CHECK(world.event_queue().empty());
+}
+
+TEST_CASE("Events due at the same instant come out in the order they were scheduled",
+          "[simulation][world]") {
+    // This is what lets the tick loop make adverse flow hit the stale quotes
+    // first: it schedules the adverse order before the quote requests.
+    sim::World world(config_of({asset(100.0, 0.2)}));
+    world.event_queue().schedule(
+        1.0,
+        sim::AdverseOrder{.asset = 0,
+                          .order = mm::MarketOrder{.side = mm::Side::Sell,
+                                                   .quantity = 1,
+                                                   .time_in_force = mm::MarketTimeInForce::IOC}});
+    world.event_queue().schedule(1.0, mm::CancelRequest{.asset = 0, .id = mm::OrderId{1}});
+
+    const auto due = world.event_queue().drain_until(1.0);
+
+    REQUIRE(due.size() == 2);
+    CHECK(std::holds_alternative<sim::AdverseOrder>(due[0]));
+    CHECK(std::holds_alternative<mm::CancelRequest>(due[1]));
 }
 
 TEST_CASE("Two Worlds built from the same config share price paths and RNG streams",

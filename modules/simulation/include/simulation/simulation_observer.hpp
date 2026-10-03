@@ -37,6 +37,11 @@ public:
     virtual void
     on_trade(mm::AssetId /*asset*/, const mm::Trade& /*trade*/, bool /*aggressor_is_mm*/) {}
 
+    /// The tick that started at on_tick_start is complete: every mark, fill
+    /// and quote change of this tick has happened, so the P&L ledger is now
+    /// final for this tick. This is the moment to read it.
+    virtual void on_tick_end(double /*time*/) {}
+
 protected:
     SimulationObserver() = default;
     SimulationObserver(const SimulationObserver&) = default;
