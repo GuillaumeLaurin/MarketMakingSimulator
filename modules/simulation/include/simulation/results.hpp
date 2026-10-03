@@ -9,9 +9,10 @@
 #include <cstdint>
 #include <vector>
 
+#include <mm/pnl.hpp>
+
 #include <math/stats/drawdown.hpp>
 #include <math/stats/running_stats.hpp>
-#include <mm/pnl.hpp>
 
 namespace mms::simulation {
 

@@ -15,8 +15,9 @@
 #include <cstdint>
 #include <vector>
 
-#include <math/rng/engine.hpp>
 #include <mm/types.hpp>
+
+#include <math/rng/engine.hpp>
 #include <simulation/asset_spec.hpp>
 #include <simulation/simulation_export.hpp>
 #include <simulation/size_spec.hpp>
@@ -51,11 +52,8 @@ draw_direction(double correlation, double last_move, math::rng::RngEngine& engin
 /// adverse_flow_direction_correlation and adverse_flow_size. `last_move` is
 /// this asset's price change over the previous tick; `dt` is the tick
 /// length. Throws std::invalid_argument on any invalid input above.
-[[nodiscard]] MMS_SIMULATION_EXPORT std::vector<mm::MarketOrder>
-generate_adverse_flow(const AssetSpec& asset,
-                      double last_move,
-                      double dt,
-                      math::rng::RngEngine& engine);
+[[nodiscard]] MMS_SIMULATION_EXPORT std::vector<mm::MarketOrder> generate_adverse_flow(
+    const AssetSpec& asset, double last_move, double dt, math::rng::RngEngine& engine);
 
 } // namespace mms::simulation
 

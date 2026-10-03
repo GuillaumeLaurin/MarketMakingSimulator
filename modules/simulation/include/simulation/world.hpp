@@ -17,13 +17,14 @@
 #include <variant>
 #include <vector>
 
-#include <core/latency_queue.hpp>
-#include <math/process/price_process.hpp>
-#include <math/rng/engine.hpp>
 #include <mm/pnl.hpp>
 #include <mm/quoting_strategy.hpp>
 #include <mm/requote.hpp>
 #include <mm/types.hpp>
+
+#include <core/latency_queue.hpp>
+#include <math/process/price_process.hpp>
+#include <math/rng/engine.hpp>
 #include <simulation/simulation_config.hpp>
 #include <simulation/simulation_export.hpp>
 
@@ -44,8 +45,9 @@ public:
     explicit World(const SimulationConfig& config);
 
     [[nodiscard]] std::size_t asset_count() const noexcept { return engines_.size(); }
-    
+
     [[nodiscard]] math::process::PriceProcess& price_process() noexcept { return *price_process_; }
+
     [[nodiscard]] const math::process::PriceProcess& price_process() const noexcept {
         return *price_process_;
     }
@@ -53,21 +55,23 @@ public:
     [[nodiscard]] mm::MatchingEngine& matching_engine(mm::AssetId asset) {
         return engines_.at(asset);
     }
+
     [[nodiscard]] const mm::MatchingEngine& matching_engine(mm::AssetId asset) const {
         return engines_.at(asset);
     }
 
     [[nodiscard]] mm::PnlLedger& pnl_ledger() noexcept { return ledger_; }
+
     [[nodiscard]] const mm::PnlLedger& pnl_ledger() const noexcept { return ledger_; }
 
     [[nodiscard]] mm::QuotingStrategy& strategy() noexcept { return *strategy_; }
+
     [[nodiscard]] const mm::QuotingStrategy& strategy() const noexcept { return *strategy_; }
 
-    using QuoteLatencyQueue = core::LatencyQueue<std::variant<mm::SubmitRequest, mm::CancelRequest>>;
+    using QuoteLatencyQueue =
+        core::LatencyQueue<std::variant<mm::SubmitRequest, mm::CancelRequest>>;
 
-    [[nodiscard]] QuoteLatencyQueue& quote_latency_queue() noexcept {
-        return quote_latency_queue_;
-    }
+    [[nodiscard]] QuoteLatencyQueue& quote_latency_queue() noexcept { return quote_latency_queue_; }
 
     /// This asset's own RngEngine for drawing adverse-flow occurrences
     /// (arrival count, direction, size). Persists across ticks: the caller

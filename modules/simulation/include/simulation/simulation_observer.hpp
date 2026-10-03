@@ -34,9 +34,8 @@ public:
     /// market maker's own order crossed the book, false when adverse flow
     /// did (against one of the market maker's resting quotes, or against
     /// nothing of the market maker's at all).
-    virtual void on_trade(mm::AssetId /*asset*/,
-                          const mm::Trade& /*trade*/,
-                          bool /*aggressor_is_mm*/) {}
+    virtual void
+    on_trade(mm::AssetId /*asset*/, const mm::Trade& /*trade*/, bool /*aggressor_is_mm*/) {}
 
 protected:
     SimulationObserver() = default;

@@ -11,9 +11,10 @@
 #include <cstdint>
 #include <vector>
 
+#include <mm/strategy_config.hpp>
+
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
-#include <mm/strategy_config.hpp>
 #include <simulation/asset_spec.hpp>
 #include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>

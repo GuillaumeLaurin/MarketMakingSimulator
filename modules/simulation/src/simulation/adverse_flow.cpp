@@ -1,8 +1,6 @@
 /// \file
 /// Implementation of adverse flow (<simulation/adverse_flow.hpp>).
 
-#include <simulation/adverse_flow.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -16,6 +14,8 @@
 #include <math/dist/discrete.hpp>
 #include <math/dist/exponential.hpp>
 #include <math/dist/uniform.hpp>
+#include <simulation/adverse_flow.hpp>
+
 #include "mm/types.hpp"
 #include "simulation/size_spec.hpp"
 
@@ -66,13 +66,12 @@ void require_size_spec(const DistributionSpec& spec) {
                 }
             }
         },
-        spec
-    );
+        spec);
 }
 
 } // namespace
 
-std::int64_t draw_arrival_count(double lambda, double dt, math::rng::RngEngine &engine) {
+std::int64_t draw_arrival_count(double lambda, double dt, math::rng::RngEngine& engine) {
     if (!std::isfinite(lambda) || lambda < 0.0) {
         reject("lambda must be finite and >= 0");
     }
@@ -95,7 +94,7 @@ std::int64_t draw_arrival_count(double lambda, double dt, math::rng::RngEngine &
     return count;
 }
 
-mm::Side draw_direction(double correlation, double last_move, math::rng::RngEngine &engine) {
+mm::Side draw_direction(double correlation, double last_move, math::rng::RngEngine& engine) {
     require_correlation(correlation);
     require_last_move(last_move);
 
@@ -109,7 +108,7 @@ mm::Side draw_direction(double correlation, double last_move, math::rng::RngEngi
     return fair_coin_buys ? mm::Side::Buy : mm::Side::Sell;
 }
 
-mm::Quantity draw_size(const DistributionSpec &spec, math::rng::RngEngine &engine) {
+mm::Quantity draw_size(const DistributionSpec& spec, math::rng::RngEngine& engine) {
     require_size_spec(spec);
 
     return std::visit(
@@ -122,18 +121,16 @@ mm::Quantity draw_size(const DistributionSpec &spec, math::rng::RngEngine &engin
                 const double raw = math::dist::exponential(engine, 1.0 / concrete.mean);
                 // Nearest whole share, never below 1, never past the clamp.
                 return static_cast<mm::Quantity>(
-                    std::clamp(std::round(raw), 1.0, max_exponential_size)
-                );
+                    std::clamp(std::round(raw), 1.0, max_exponential_size));
             }
         },
-        spec
-    );
+        spec);
 }
 
-std::vector<mm::MarketOrder> generate_adverse_flow(const AssetSpec &asset, 
-                                                   double last_move, 
-                                                   double dt, 
-                                                   math::rng::RngEngine &engine) {
+std::vector<mm::MarketOrder> generate_adverse_flow(const AssetSpec& asset,
+                                                   double last_move,
+                                                   double dt,
+                                                   math::rng::RngEngine& engine) {
     // Everything is validated before the first draw, so a rejected call
     // leaves the engine exactly where it was.
     require_correlation(asset.adverse_flow_direction_correlation);
@@ -149,10 +146,7 @@ std::vector<mm::MarketOrder> generate_adverse_flow(const AssetSpec &asset,
             draw_direction(asset.adverse_flow_direction_correlation, last_move, engine);
         const mm::Quantity quantity = draw_size(asset.adverse_flow_size, engine);
         orders.push_back(mm::MarketOrder{
-            .side = side,
-            .quantity = quantity,
-            .time_in_force = mm::MarketTimeInForce::IOC
-        });
+            .side = side, .quantity = quantity, .time_in_force = mm::MarketTimeInForce::IOC});
     }
     return orders;
 }

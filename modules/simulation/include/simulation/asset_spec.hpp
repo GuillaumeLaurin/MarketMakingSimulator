@@ -11,8 +11,9 @@
 
 #include <optional>
 
-#include <math/types.hpp>
 #include <mm/types.hpp>
+
+#include <math/types.hpp>
 #include <simulation/size_spec.hpp>
 
 namespace mms::simulation {
@@ -41,7 +42,7 @@ struct AssetSpec {
     /// Distinct from mm's per-asset volatility ESTIMATE, which only ever
     /// observes mids after the fact.
     double price_volatility;
-    
+
     /// Drift of the true price, per unit of simulation time.
     double mu = 0.0;
 

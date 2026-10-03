@@ -1,8 +1,6 @@
 /// \file
 /// Implementation of World
 
-#include <simulation/world.hpp>
-
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -10,10 +8,14 @@
 #include <utility>
 #include <variant>
 
+#include <mm/strategy_config.hpp>
+
 #include <math/covariance/covariance_matrix.hpp>
 #include <math/process/correlated_random_walk.hpp>
 #include <math/process/factor_model.hpp>
 #include <math/rng/stream.hpp>
+#include <simulation/world.hpp>
+
 #include "math/process/price_process.hpp"
 #include "math/rng/engine.hpp"
 #include "math/types.hpp"
@@ -21,7 +23,6 @@
 #include "simulation/asset_spec.hpp"
 #include "simulation/price_process_spec.hpp"
 #include "simulation/simulation_config.hpp"
-#include <mm/strategy_config.hpp>
 
 namespace mms::simulation {
 
@@ -39,12 +40,8 @@ std::vector<mm::LedgerAsset> gather_ledger_assets(const SimulationConfig& config
     std::vector<mm::LedgerAsset> assets;
     assets.reserve(config.assets.size());
     for (const AssetSpec& asset : config.assets) {
-        assets.push_back(
-            mm::LedgerAsset{
-                .initial_mid = asset.initial_mid, 
-                .maker_fee_bps = asset.maker_fee_bps
-            }
-        );
+        assets.push_back(mm::LedgerAsset{.initial_mid = asset.initial_mid,
+                                         .maker_fee_bps = asset.maker_fee_bps});
     }
     return assets;
 }
@@ -55,10 +52,7 @@ std::vector<math::rng::RngEngine> build_engines(const SimulationConfig& config,
     std::vector<math::rng::RngEngine> engines;
     engines.reserve(config.assets.size());
     for (std::size_t i = 0; i < config.assets.size(); ++i) {
-        engines.push_back(hub.engine_for({
-            .subsystem = subsystem,
-            .asset = asset_key(i)
-        }));
+        engines.push_back(hub.engine_for({.subsystem = subsystem, .asset = asset_key(i)}));
     }
     return engines;
 }
@@ -80,7 +74,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
     }
     const math::covariance::CovarianceMatrix cov =
         math::covariance::CovarianceMatrix::from_correlation(vols, config.correlation);
-    
+
     const math::rng::RngHub hub(config.master_seed);
 
     math::Vector initial_prices(n);
@@ -102,16 +96,11 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                     if (assets[i].factor_model.has_value()) {
                         reject("an asset has factor_model data but the process is RandomWalkSpec");
                     }
-                    engines.push_back(
-                        hub.engine_for({
-                            .subsystem = math::rng::Subsystem::Price,
-                            .asset = asset_key(i)
-                        })
-                    );
+                    engines.push_back(hub.engine_for(
+                        {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(i)}));
                 }
                 return std::make_unique<math::process::CorrelatedRandomWalk>(
-                    initial_prices, mu, cov.cholesky(), std::move(engines)
-                );
+                    initial_prices, mu, cov.cholesky(), std::move(engines));
             } else {
                 static_assert(std::is_same_v<Spec, FactorModelSpec>);
                 const auto k = static_cast<Eigen::Index>(process_spec.factor_count);
@@ -131,48 +120,36 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                     const auto index = static_cast<Eigen::Index>(i);
                     beta.row(index) = data.beta.transpose();
                     idio_vol(index) = data.idiosyncratic_volatility;
-                    price_engines.push_back(
-                        hub.engine_for({
-                            .subsystem = math::rng::Subsystem::Price,
-                            .asset = asset_key(i)
-                        })
-                    );
+                    price_engines.push_back(hub.engine_for(
+                        {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(i)}));
                 }
-                
+
                 std::vector<math::rng::RngEngine> factor_engines;
                 factor_engines.reserve(process_spec.factor_count);
                 for (std::size_t f = 0; f < process_spec.factor_count; ++f) {
-                    factor_engines.push_back(
-                        hub.engine_for({
-                            .subsystem = math::rng::Subsystem::PriceFactor,
-                            .asset = asset_key(f),
-                        })
-                    );
+                    factor_engines.push_back(hub.engine_for({
+                        .subsystem = math::rng::Subsystem::PriceFactor,
+                        .asset = asset_key(f),
+                    }));
                 }
 
-                return std::make_unique<math::process::FactorModel>(
-                    initial_prices,
-                    mu,
-                    beta,
-                    math::Matrix::Identity(k,k),
-                    idio_vol,
-                    std::move(price_engines),
-                    std::move(factor_engines)
-                );
+                return std::make_unique<math::process::FactorModel>(initial_prices,
+                                                                    mu,
+                                                                    beta,
+                                                                    math::Matrix::Identity(k, k),
+                                                                    idio_vol,
+                                                                    std::move(price_engines),
+                                                                    std::move(factor_engines));
             }
-            
         },
-        config.process
-    );
+        config.process);
 }
 
 } // namespace
 
 World::World(const SimulationConfig& config)
-    : price_process_(build_price_process(config)),
-      engines_(config.assets.size()),
-      quote_latency_queue_(),
-      ledger_(gather_ledger_assets(config)),
+    : price_process_(build_price_process(config)), engines_(config.assets.size()),
+      quote_latency_queue_(), ledger_(gather_ledger_assets(config)),
       strategy_(mm::make_strategy(config.strategy)),
       adverse_flow_engines_(build_engines(config, math::rng::Subsystem::AdverseFlow)),
       latency_engines_(build_engines(config, math::rng::Subsystem::Latency)) {
