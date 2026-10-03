@@ -6,6 +6,7 @@
 
 #include <simulation/asset_spec.hpp>
 #include <simulation/delay_spec.hpp>
+#include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>
 #include <simulation/size_spec.hpp>
 
