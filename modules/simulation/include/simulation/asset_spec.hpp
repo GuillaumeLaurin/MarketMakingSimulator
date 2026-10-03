@@ -53,6 +53,13 @@ struct AssetSpec {
     /// unit of simulation time.
     double adverse_flow_lambda = 0.0;
 
+    /// How adverse the direction of each occurrence is, in [0, 1]: with this
+    /// probability an occurrence trades in the direction of the last price
+    /// move (adverse selection), otherwise its direction is a fair coin.
+    /// 0 is pure noise, 1 always follows the move. Validated where it is
+    /// used (adverse_flow.cpp), not here.
+    double adverse_flow_direction_correlation = 0.0;
+
     /// The size of one adverse-flow occurrence on this asset.
     DistributionSpec adverse_flow_size;
 };

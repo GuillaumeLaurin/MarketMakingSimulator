@@ -28,6 +28,7 @@ TEST_CASE("AssetSpec's optional fields default to zero or empty", "[simulation][
     CHECK(spec.mu == 0.0);
     CHECK_FALSE(spec.factor_model.has_value());
     CHECK(spec.adverse_flow_lambda == 0.0);
+    CHECK(spec.adverse_flow_direction_correlation == 0.0); // pure noise unless asked otherwise
 }
 
 TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][asset_spec]") {
@@ -41,6 +42,7 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
         .mu = 0.01,
         .factor_model = sim::FactorModelAssetData{.beta = beta, .idiosyncratic_volatility = 0.1},
         .adverse_flow_lambda = 2.0,
+        .adverse_flow_direction_correlation = 0.75,
         .adverse_flow_size = sim::UniformIntSpec{.min = 1, .max = 20}};
 
     CHECK(spec.initial_mid == 50.0);
@@ -52,6 +54,7 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
     CHECK(spec.factor_model->beta(1) == -0.3);
     CHECK(spec.factor_model->idiosyncratic_volatility == 0.1);
     CHECK(spec.adverse_flow_lambda == 2.0);
+    CHECK(spec.adverse_flow_direction_correlation == 0.75);
     REQUIRE(std::holds_alternative<sim::UniformIntSpec>(spec.adverse_flow_size));
     CHECK(std::get<sim::UniformIntSpec>(spec.adverse_flow_size).max == 20);
 }
@@ -72,6 +75,8 @@ TEST_CASE("initial_mid is mm::Price and price-related rates are plain double",
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::price_volatility), double>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::mu), double>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::adverse_flow_lambda), double>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(sim::AssetSpec::adverse_flow_direction_correlation), double>);
 }
 
 TEST_CASE("AssetSpec::adverse_flow_size is exactly size_spec's DistributionSpec",
