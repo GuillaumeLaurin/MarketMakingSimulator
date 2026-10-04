@@ -14,6 +14,7 @@
 #include <simulation/simulation_config.hpp>
 #include <simulation/simulation_observer.hpp>
 #include <simulation/size_spec.hpp>
+#include <simulation/tick_loop.hpp>
 #include <simulation/world.hpp>
 
 #endif // MMS_SIMULATION_SIMULATION_HPP
