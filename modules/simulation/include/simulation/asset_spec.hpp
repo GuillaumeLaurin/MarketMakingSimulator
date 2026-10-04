@@ -10,6 +10,7 @@
 /// the one CovarianceMatrix.
 
 #include <optional>
+#include <string>
 
 #include <mm/types.hpp>
 
@@ -31,6 +32,12 @@ struct FactorModelAssetData {
 /// field is validated wherever it is actually used (World building the
 /// PriceProcess and the CovarianceMatrix, PnlLedger, adverse_flow).
 struct AssetSpec {
+    /// What this asset is called. It is the asset's identity: its random
+    /// streams are derived from it (math::rng::asset_key_of), so renaming an
+    /// asset, or reordering the basket, changes nothing about the others.
+    /// Must be unique in a simulation; World checks.
+    std::string symbol;
+
     /// The true price's starting point, also PnlLedger's initial mid.
     mm::Price initial_mid;
 
