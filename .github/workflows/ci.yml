@@ -72,16 +72,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+      # The key carries the run id so every run can save a fresh cache: a key that only
+      # depends on vcpkg.json stays "hit" forever, is never re-saved, and goes stale when
+      # the runner image changes the compiler (every package ABI hash changes with it).
+      - name: Restore vcpkg binaries
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/vcpkg/archives
             ~/AppData/Local/vcpkg/archives
-          key: vcpkg-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
           restore-keys: |
+            vcpkg-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-${{ hashFiles('vcpkg.json') }}-
             vcpkg-${{ runner.os }}-${{ matrix.cc || 'msvc' }}-
-            vcpkg-${{ runner.os }}-
 
       - name: Select Clang
         if: matrix.cc == 'clang'
@@ -106,28 +110,55 @@ jobs:
         shell: bash
         run: bash ci/build.sh dev
 
+      - name: Save vcpkg binaries
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            ~/AppData/Local/vcpkg/archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
   lint:
     needs: guard
     if: needs.guard.outputs.run == 'true'
-    name: Lint - clang-format + clang-tidy
+    name: Lint - clang-format + clang-tidy (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]   # clang-tidy's file list is split four ways, one runner each
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # check-tidy.sh diffs against the PR's base branch
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+      - name: Restore vcpkg binaries
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-Linux-lint-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-Linux-
+          key: vcpkg-Linux-lint-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-Linux-lint-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-Linux-lint-
+            vcpkg-Linux-
       - run: bash ci/setup-linux.sh
-      - run: bash ci/check-format.sh
+      - name: clang-format
+        if: matrix.shard == 0   # one check is enough, it does not depend on the shard
+        run: bash ci/check-format.sh
       - name: clang-tidy (changed files on a PR, everything otherwise)
         env:
+          MMS_TIDY_SHARD: ${{ matrix.shard }}/4
           MMS_TIDY_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: bash ci/check-tidy.sh dev
+
+      - name: Save vcpkg binaries
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true' && matrix.shard == 0
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
   sanitizers:
     needs: guard
@@ -137,14 +168,25 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+      - name: Restore vcpkg binaries
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-Linux-asan-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-Linux-
+          key: vcpkg-Linux-asan-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-Linux-asan-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-Linux-asan-
+            vcpkg-Linux-
       - run: bash ci/setup-linux.sh
       - run: bash ci/sanitize.sh asan
+
+      - name: Save vcpkg binaries
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
   coverage:
     needs: guard
@@ -154,12 +196,16 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+      - name: Restore vcpkg binaries
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-Linux-coverage-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-Linux-
+          key: vcpkg-Linux-coverage-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-Linux-coverage-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-Linux-coverage-
+            vcpkg-Linux-
       - run: bash ci/setup-linux.sh
       - run: bash ci/coverage.sh
       - name: Upload coverage report
@@ -171,6 +217,13 @@ jobs:
             build/coverage/html
           if-no-files-found: ignore
 
+      - name: Save vcpkg binaries
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
+
   docs:
     needs: guard
     if: needs.guard.outputs.run == 'true'
@@ -179,12 +232,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+      - name: Restore vcpkg binaries
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-Linux-docs-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-Linux-
+          key: vcpkg-Linux-docs-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: |
+            vcpkg-Linux-docs-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-Linux-docs-
+            vcpkg-Linux-
       - run: bash ci/setup-linux.sh
       - name: Build API docs
         run: |
@@ -196,3 +253,10 @@ jobs:
           name: api-docs
           path: build/dev/docs/html
           if-no-files-found: warn
+
+      - name: Save vcpkg binaries
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}

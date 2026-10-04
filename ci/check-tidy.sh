@@ -9,9 +9,9 @@
 # Set MMS_TIDY_BASE to a git ref (for example origin/main) to analyse only what
 # changed since it, which is what pull requests do. A changed header re-checks
 # every translation unit of its module, since any of them may include it. A
-# change to the tidy config or to the CMake files that shape the compile
-# database re-checks everything, as does an unset MMS_TIDY_BASE (pushes to
-# main, local runs).
+# change to the tidy config, to the CMake files that shape the compile
+# database, or to this script and the workflow that runs it re-checks
+# everything, as does an unset MMS_TIDY_BASE (pushes to main, local runs).
 . "$(dirname "$0")/lib.sh"
 cd "$(repo_root)"
 
@@ -37,8 +37,8 @@ select_sources() {
     changed=$(git diff --name-only --diff-filter=ACMR "${MMS_TIDY_BASE}...HEAD") ||
         die "cannot diff against ${MMS_TIDY_BASE} (is it fetched? use fetch-depth: 0)"
 
-    if printf '%s\n' "$changed" | grep -qE '(^|/)\.clang-tidy$|^CMakeLists\.txt$|^CMakePresets\.json$|^vcpkg\.json$|^cmake/'; then
-        log "tidy config or build files changed: analysing everything" >&2
+    if printf '%s\n' "$changed" | grep -qE '(^|/)\.clang-tidy$|^CMakeLists\.txt$|^CMakePresets\.json$|^vcpkg\.json$|^cmake/|^ci/check-tidy\.sh$|^\.github/workflows/ci\.yml$'; then
+        log "tidy config, build files or the lint pipeline itself changed: analysing everything" >&2
         all_sources
         return
     fi
@@ -62,22 +62,59 @@ select_sources() {
 }
 
 selected=$(select_sources)
+
+# Test translation units are 80% of the run time and most of the noise (every
+# Catch2 macro expands into code that is analysed too); their headers are still
+# checked through the sources. MMS_TIDY_INCLUDE_TESTS=1 brings them back.
+if [ "${MMS_TIDY_INCLUDE_TESTS:-0}" != 1 ]; then
+    selected=$(printf '%s\n' "$selected" | grep -vE '^modules/[^/]+/tests/' || true)
+fi
+
+# MMS_TIDY_SHARD=<i>/<n>: keep every n-th file starting at i, so n CI jobs split
+# the list between them (each job has its own cores, unlike -j on one runner).
+shard_note=""
+if [ -n "${MMS_TIDY_SHARD:-}" ]; then
+    shard_index="${MMS_TIDY_SHARD%/*}"
+    shard_count="${MMS_TIDY_SHARD#*/}"
+    [[ "$shard_index" =~ ^[0-9]+$ && "$shard_count" =~ ^[1-9][0-9]*$ && "$shard_index" -lt "$shard_count" ]] ||
+        die "MMS_TIDY_SHARD must look like 0/4 (index/count), got '${MMS_TIDY_SHARD}'"
+    selected=$(printf '%s\n' "$selected" | awk -v i="$shard_index" -v n="$shard_count" 'NF && (++k - 1) % n == i')
+    shard_note=" (shard ${shard_index}/${shard_count})"
+fi
+
 mapfile -t files <<<"$selected"
 [ -n "$selected" ] || files=()
 
 if [ "${#files[@]}" -eq 0 ]; then
     log "no C/C++ sources to analyse, nothing to tidy"
+    # Make the skip visible on the run's summary page, not only in the log.
+    [ -z "${GITHUB_ACTIONS:-}" ] || echo "::notice::clang-tidy had nothing to analyse for this selection"
+    exit 0
+fi
+
+if [ "${MMS_TIDY_LIST_ONLY:-0}" = 1 ]; then # dry run: show the selection
+    printf '%s\n' "${files[@]}"
     exit 0
 fi
 
 jobs="${MMS_TIDY_JOBS:-$(nproc 2>/dev/null || echo 2)}"
-log "clang-tidy on ${#files[@]} file(s), ${jobs} at a time"
+log "clang-tidy on ${#files[@]} file(s)${shard_note}, ${jobs} at a time"
 clang-tidy --version
 
-# One clang-tidy process per file, ${jobs} at a time. xargs exits non-zero if
-# any invocation does, so a compile error still fails the step. --quiet drops
-# the per-file "N warnings generated" noise (almost all of it suppressed
-# diagnostics from third-party headers).
+# One clang-tidy process per file, ${jobs} at a time. Each one announces the file
+# it starts and how long it took, so a slow or stuck file shows in the log (the
+# files run in parallel, so their diagnostics may interleave between the two
+# lines). xargs exits non-zero if any invocation does, so a compile error still
+# fails the step.
+tidy_one() {
+    local file="$1" start="$SECONDS" rc=0
+    echo "[tidy] start  ${file}"
+    clang-tidy --quiet -p "build/${preset}" "$file" || rc=$?
+    echo "[tidy] done   ${file} ($((SECONDS - start))s, exit ${rc})"
+    return "$rc"
+}
+export -f tidy_one
+export preset
 printf '%s\n' "${files[@]}" |
-    xargs -P "${jobs}" -n 1 clang-tidy --quiet -p "build/${preset}"
+    xargs -P "${jobs}" -I{} bash -c 'tidy_one "$1"' _ {}
 log "tidy OK"
