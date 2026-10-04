@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <set>
+#include <string_view>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -14,6 +15,7 @@
 
 namespace {
 
+using mms::math::rng::asset_key_of;
 using mms::math::rng::AssetKey;
 using mms::math::rng::no_asset;
 using mms::math::rng::RngEngine;
@@ -43,6 +45,13 @@ static_assert([] {
 static_assert(price7 == (StreamKey{.subsystem = Subsystem::Price, .asset = AssetKey{7}}));
 static_assert(!(price7 == (StreamKey{.subsystem = Subsystem::Latency, .asset = AssetKey{7}})));
 static_assert(no_asset == AssetKey{~std::uint64_t{0}});
+
+// FNV-1a 64 as published (the offset basis for the empty string, and the usual test
+// strings). Computed independently of the implementation under test.
+static_assert(asset_key_of("") == AssetKey{0xCBF29CE484222325ULL});
+static_assert(asset_key_of("a") == AssetKey{0xAF63DC4C8601EC8CULL});
+static_assert(asset_key_of("foo") == AssetKey{0xDCB27518FED9D577ULL});
+static_assert(asset_key_of("foobar") == AssetKey{0x85944171F73967E8ULL});
 
 std::array<std::uint64_t, 8> take8(RngEngine e) {
     std::array<std::uint64_t, 8> out{};
@@ -99,4 +108,69 @@ TEST_CASE("child sub-hubs are independent of the parent and each other", "[rng][
     CHECK(k3.engine_for(price7) != hub.engine_for(price7));
     CHECK(k3.engine_for(price7) != k4.engine_for(price7));
     CHECK(k3.engine_for(price7) == hub.child(3).engine_for(price7)); // deterministic
+}
+
+// ------------------------------------------------------------ asset_key_of
+
+TEST_CASE("asset_key_of is FNV-1a 64 over the bytes of the symbol", "[rng][stream][asset_key]") {
+    // The same vectors as the compile-time anchors above, plus the symbols the
+    // simulation actually uses, worked out independently of the header.
+    CHECK(asset_key_of("") == AssetKey{0xCBF29CE484222325ULL});
+    CHECK(asset_key_of("a") == AssetKey{0xAF63DC4C8601EC8CULL});
+    CHECK(asset_key_of("foo") == AssetKey{0xDCB27518FED9D577ULL});
+    CHECK(asset_key_of("foobar") == AssetKey{0x85944171F73967E8ULL});
+    CHECK(asset_key_of("AAPL") == AssetKey{0x89106B8B9F086CCBULL});
+    CHECK(asset_key_of("aapl") == AssetKey{0xF4EE6A83EA65D80BULL});
+}
+
+TEST_CASE("asset_key_of treats every byte as unsigned", "[rng][stream][asset_key]") {
+    // A signed char would sign-extend 0xFF to all ones before the xor, which is
+    // a different key on a platform where char is signed.
+    const std::string_view one_byte{"\xFF", 1};
+    CHECK(asset_key_of(one_byte) == AssetKey{0xAF64724C8602EB6EULL});
+}
+
+TEST_CASE("asset_key_of reads the whole view, not up to a NUL", "[rng][stream][asset_key]") {
+    const std::string_view with_nul{"A\0B", 3};
+    CHECK(asset_key_of(with_nul) != asset_key_of("A"));
+    CHECK(asset_key_of(with_nul) != asset_key_of("AB"));
+}
+
+TEST_CASE("asset_key_of is case sensitive and order sensitive", "[rng][stream][asset_key]") {
+    CHECK(asset_key_of("AAPL") != asset_key_of("aapl"));
+    CHECK(asset_key_of("AB") != asset_key_of("BA"));
+    CHECK(asset_key_of("A") != asset_key_of("AA"));
+}
+
+TEST_CASE("asset_key_of gives distinct keys to a realistic list of symbols",
+          "[rng][stream][asset_key]") {
+    const std::array<std::string_view, 24> symbols{
+        "AAPL", "MSFT", "GOOG", "AMZN", "TSLA",   "META",   "NVDA",   "NFLX",
+        "JPM",  "BAC",  "WFC",  "GS",   "XOM",    "CVX",    "KO",     "PEP",
+        "DIS",  "BA",   "T",    "VZ",   "ASSET0", "ASSET1", "ASSET2", "ASSET3"};
+    std::set<std::uint64_t> seen;
+    for (const std::string_view symbol : symbols) {
+        const auto key = static_cast<std::uint64_t>(asset_key_of(symbol));
+        CHECK(key != static_cast<std::uint64_t>(no_asset));
+        seen.insert(key);
+    }
+    CHECK(seen.size() == symbols.size());
+}
+
+TEST_CASE("An asset's stream follows its symbol, not its position", "[rng][stream][asset_key]") {
+    const RngHub hub{Seed{0xABCD}};
+    const StreamKey aapl{.subsystem = Subsystem::Price, .asset = asset_key_of("AAPL")};
+    const StreamKey msft{.subsystem = Subsystem::Price, .asset = asset_key_of("MSFT")};
+
+    // The same symbol is the same stream, whatever else exists or was asked for.
+    const auto before = take8(hub.engine_for(aapl));
+    static_cast<void>(hub.engine_for(msft));
+    static_cast<void>(
+        hub.engine_for(StreamKey{.subsystem = Subsystem::Price, .asset = asset_key_of("NEWCO")}));
+    CHECK(take8(hub.engine_for(aapl)) == before);
+
+    // Two symbols are two streams, and so are two subsystems of one symbol.
+    CHECK(hub.engine_for(aapl) != hub.engine_for(msft));
+    CHECK(hub.engine_for(aapl) != hub.engine_for(StreamKey{.subsystem = Subsystem::Latency,
+                                                           .asset = asset_key_of("AAPL")}));
 }

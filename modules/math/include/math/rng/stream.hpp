@@ -7,6 +7,7 @@
 /// master Seed.
 
 #include <cstdint>
+#include <string_view>
 
 #include <math/rng/engine.hpp>
 #include <math/rng/seed.hpp>
@@ -19,6 +20,23 @@ enum class AssetKey : std::uint64_t {};
 
 /// Sentinel for streams that are not per-asset (e.g. a global factor stream).
 inline constexpr AssetKey no_asset{~std::uint64_t{0}};
+
+/// The identity of an asset, from its symbol: 64-bit FNV-1a over the bytes of
+/// the symbol, exactly as published (offset basis 14695981039346656037, prime
+/// 1099511628211). The same symbol gives the same key on every compiler and
+/// platform, which is what lets a saved simulation reopen anywhere and what
+/// keeps an asset's streams the same when other assets come and go. Not
+/// std::hash: its result is allowed to change from one standard library to
+/// the next. Case matters ("AAPL" and "aapl" are two assets); any
+/// normalisation is up to the caller.
+[[nodiscard]] constexpr AssetKey asset_key_of(std::string_view symbol) noexcept {
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (const char c : symbol) {
+        hash ^= static_cast<std::uint8_t>(c);
+        hash *= 1099511628211ULL;
+    }
+    return AssetKey{hash};
+}
 
 struct StreamKey {
     Subsystem subsystem{};

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -38,7 +39,8 @@ sim::SimulationConfig make_config(std::int64_t tick_count, std::uint64_t seed = 
     std::vector<sim::AssetSpec> assets;
     for (const double mid : {100.0, 150.0}) {
         assets.push_back(
-            sim::AssetSpec{.initial_mid = mid,
+            sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
+                           .initial_mid = mid,
                            .maker_fee_bps = 1.0,
                            .price_volatility = 1.0,
                            .mu = 0.0,

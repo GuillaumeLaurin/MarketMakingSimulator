@@ -4,6 +4,7 @@
 /// size_spec's DistributionSpec rather than redefining its own.
 
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <variant>
 
@@ -19,7 +20,8 @@ namespace mm = mms::mm;
 namespace math = mms::math;
 
 TEST_CASE("AssetSpec's optional fields default to zero or empty", "[simulation][asset_spec]") {
-    const sim::AssetSpec spec{.initial_mid = 100.0,
+    const sim::AssetSpec spec{.symbol = "TEST",
+                              .initial_mid = 100.0,
                               .price_volatility = 0.2,
                               .factor_model = std::nullopt,
                               .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}};
@@ -36,6 +38,7 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
     beta << 0.5, -0.3;
 
     const sim::AssetSpec spec{
+        .symbol = "HOLD",
         .initial_mid = 50.0,
         .maker_fee_bps = 1.5,
         .price_volatility = 0.3,
@@ -45,6 +48,7 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
         .adverse_flow_direction_correlation = 0.75,
         .adverse_flow_size = sim::UniformIntSpec{.min = 1, .max = 20}};
 
+    CHECK(spec.symbol == "HOLD");
     CHECK(spec.initial_mid == 50.0);
     CHECK(spec.maker_fee_bps == 1.5);
     CHECK(spec.price_volatility == 0.3);
@@ -61,7 +65,8 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
 
 TEST_CASE("A RandomWalk-style AssetSpec simply leaves factor_model empty",
           "[simulation][asset_spec]") {
-    const sim::AssetSpec spec{.initial_mid = 100.0,
+    const sim::AssetSpec spec{.symbol = "TEST",
+                              .initial_mid = 100.0,
                               .price_volatility = 0.2,
                               .factor_model = std::nullopt,
                               .adverse_flow_size = sim::ExponentialSpec{.mean = 3.0}};
@@ -71,6 +76,7 @@ TEST_CASE("A RandomWalk-style AssetSpec simply leaves factor_model empty",
 
 TEST_CASE("initial_mid is mm::Price and price-related rates are plain double",
           "[simulation][asset_spec]") {
+    STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::symbol), std::string>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::initial_mid), mm::Price>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::price_volatility), double>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::mu), double>);
