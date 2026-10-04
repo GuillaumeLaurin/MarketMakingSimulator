@@ -43,12 +43,13 @@ function(mms_add_test name)
     # self-contained regardless of PATH: it fixes catch_discover_tests launching
     # the binary during discovery, and plain `ctest` / a direct run. The genex
     # list is empty on ELF/Mach-O platforms (they use RPATH), so the command is a
-    # no-op there.
+    # no-op there. All tests share out/test, so the copy goes through a script
+    # that takes a lock: parallel links copying the same DLL used to collide.
     add_custom_command(TARGET ${_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E
-            "$<IF:$<BOOL:$<TARGET_RUNTIME_DLLS:${_target}>>,copy_if_different,true>"
-            "$<TARGET_RUNTIME_DLLS:${_target}>" "$<TARGET_FILE_DIR:${_target}>"
-        COMMAND_EXPAND_LISTS
+        COMMAND ${CMAKE_COMMAND}
+            "-DDLLS=$<JOIN:$<TARGET_RUNTIME_DLLS:${_target}>,*>"
+            "-DDEST=$<TARGET_FILE_DIR:${_target}>"
+            -P "${PROJECT_SOURCE_DIR}/cmake/Scripts/StageRuntimeDlls.cmake"
         VERBATIM)
 
     if(COMMAND catch_discover_tests)

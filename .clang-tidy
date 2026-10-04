@@ -25,5 +25,5 @@ Checks: >
   -readability-magic-numbers
 
 WarningsAsErrors: ''
-HeaderFilterRegex: '(modules|src|include)/.*\.(hpp|hxx|h)$'
+HeaderFilterRegex: '.*/(modules/[^/]+/(include|src|tests|bench)|include/app|src/app)/.*\.(hpp|hxx|h)$'
 FormatStyle: file

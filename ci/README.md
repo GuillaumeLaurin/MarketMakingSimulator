@@ -11,7 +11,7 @@ runnable locally. GitHub Actions (`.github/workflows/ci.yml`) only orchestrates
 | `setup-windows.ps1` | ensure ninja + vcpkg (MSVC env comes from the workflow) |
 | `build.sh [preset]` | `cmake --preset` → `--build` → `ctest` (preset defaults to `dev`) |
 | `check-format.sh` | `clang-format --dry-run --Werror` over `modules/ src/ include/` |
-| `check-tidy.sh [preset]` | `clang-tidy` over the module / app sources using the preset's compile DB |
+| `check-tidy.sh [preset]` | `clang-tidy` over the module / app sources using the preset's compile DB, in parallel (`MMS_TIDY_JOBS`); with `MMS_TIDY_BASE=<git ref>` only what changed since that ref (a changed header re-checks its whole module) |
 | `sanitize.sh [preset]` | `build.sh` with ASan/UBSan env (preset defaults to `asan`) |
 | `coverage.sh` | build the `coverage` preset, run tests, write `build/coverage/coverage.xml` |
 
