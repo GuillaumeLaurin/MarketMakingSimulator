@@ -109,9 +109,13 @@ jobs:
   lint:
     needs: guard
     if: needs.guard.outputs.run == 'true'
-    name: Lint - clang-format + clang-tidy
+    name: Lint - clang-format + clang-tidy (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]   # clang-tidy's file list is split four ways, one runner each
     steps:
       - uses: actions/checkout@v4
         with:
@@ -123,9 +127,12 @@ jobs:
           key: vcpkg-Linux-lint-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-Linux-
       - run: bash ci/setup-linux.sh
-      - run: bash ci/check-format.sh
+      - name: clang-format
+        if: matrix.shard == 0   # one check is enough, it does not depend on the shard
+        run: bash ci/check-format.sh
       - name: clang-tidy (changed files on a PR, everything otherwise)
         env:
+          MMS_TIDY_SHARD: ${{ matrix.shard }}/4
           MMS_TIDY_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
         run: bash ci/check-tidy.sh dev
 

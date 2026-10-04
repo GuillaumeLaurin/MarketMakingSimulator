@@ -62,6 +62,26 @@ select_sources() {
 }
 
 selected=$(select_sources)
+
+# Test translation units are 80% of the run time and most of the noise (every
+# Catch2 macro expands into code that is analysed too); their headers are still
+# checked through the sources. MMS_TIDY_INCLUDE_TESTS=1 brings them back.
+if [ "${MMS_TIDY_INCLUDE_TESTS:-0}" != 1 ]; then
+    selected=$(printf '%s\n' "$selected" | grep -vE '^modules/[^/]+/tests/' || true)
+fi
+
+# MMS_TIDY_SHARD=<i>/<n>: keep every n-th file starting at i, so n CI jobs split
+# the list between them (each job has its own cores, unlike -j on one runner).
+shard_note=""
+if [ -n "${MMS_TIDY_SHARD:-}" ]; then
+    shard_index="${MMS_TIDY_SHARD%/*}"
+    shard_count="${MMS_TIDY_SHARD#*/}"
+    [[ "$shard_index" =~ ^[0-9]+$ && "$shard_count" =~ ^[1-9][0-9]*$ && "$shard_index" -lt "$shard_count" ]] ||
+        die "MMS_TIDY_SHARD must look like 0/4 (index/count), got '${MMS_TIDY_SHARD}'"
+    selected=$(printf '%s\n' "$selected" | awk -v i="$shard_index" -v n="$shard_count" 'NF && (++k - 1) % n == i')
+    shard_note=" (shard ${shard_index}/${shard_count})"
+fi
+
 mapfile -t files <<<"$selected"
 [ -n "$selected" ] || files=()
 
@@ -70,14 +90,17 @@ if [ "${#files[@]}" -eq 0 ]; then
     exit 0
 fi
 
+if [ "${MMS_TIDY_LIST_ONLY:-0}" = 1 ]; then # dry run: show the selection
+    printf '%s\n' "${files[@]}"
+    exit 0
+fi
+
 jobs="${MMS_TIDY_JOBS:-$(nproc 2>/dev/null || echo 2)}"
-log "clang-tidy on ${#files[@]} file(s), ${jobs} at a time"
+log "clang-tidy on ${#files[@]} file(s)${shard_note}, ${jobs} at a time"
 clang-tidy --version
 
 # One clang-tidy process per file, ${jobs} at a time. xargs exits non-zero if
-# any invocation does, so a compile error still fails the step. --quiet drops
-# the per-file "N warnings generated" noise (almost all of it suppressed
-# diagnostics from third-party headers).
+# any invocation does, so a compile error still fails the step.
 printf '%s\n' "${files[@]}" |
     xargs -P "${jobs}" -n 1 clang-tidy --quiet -p "build/${preset}"
 log "tidy OK"
