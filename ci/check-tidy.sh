@@ -101,8 +101,20 @@ jobs="${MMS_TIDY_JOBS:-$(nproc 2>/dev/null || echo 2)}"
 log "clang-tidy on ${#files[@]} file(s)${shard_note}, ${jobs} at a time"
 clang-tidy --version
 
-# One clang-tidy process per file, ${jobs} at a time. xargs exits non-zero if
-# any invocation does, so a compile error still fails the step.
+# One clang-tidy process per file, ${jobs} at a time. Each one announces the file
+# it starts and how long it took, so a slow or stuck file shows in the log (the
+# files run in parallel, so their diagnostics may interleave between the two
+# lines). xargs exits non-zero if any invocation does, so a compile error still
+# fails the step.
+tidy_one() {
+    local file="$1" start="$SECONDS" rc=0
+    echo "[tidy] start  ${file}"
+    clang-tidy --quiet -p "build/${preset}" "$file" || rc=$?
+    echo "[tidy] done   ${file} ($((SECONDS - start))s, exit ${rc})"
+    return "$rc"
+}
+export -f tidy_one
+export preset
 printf '%s\n' "${files[@]}" |
-    xargs -P "${jobs}" -n 1 clang-tidy --quiet -p "build/${preset}"
+    xargs -P "${jobs}" -I{} bash -c 'tidy_one "$1"' _ {}
 log "tidy OK"
