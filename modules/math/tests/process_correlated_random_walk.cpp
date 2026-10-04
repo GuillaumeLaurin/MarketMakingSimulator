@@ -5,7 +5,9 @@
 /// construction-time size validation, reset()'s restoration of both prices
 /// and engine state, and the zero-chol deterministic-drift edge case.
 
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -23,6 +25,7 @@ using mms::math::Matrix;
 using mms::math::Vector;
 using mms::math::process::correlated_normal_increment;
 using mms::math::process::CorrelatedRandomWalk;
+using mms::math::process::Dynamics;
 namespace rng = mms::math::rng;
 
 std::vector<rng::RngEngine> engines_for(const rng::RngHub& hub, int n) {
@@ -51,16 +54,21 @@ TEST_CASE("CorrelatedRandomWalk rejects inconsistent construction sizes",
     Matrix chol(2, 2);
     chol << 1.0, 0.0, 0.5, 1.0;
 
-    CHECK_THROWS_AS(CorrelatedRandomWalk(prices, Vector(3), chol, engines_for(hub, 2)),
-                    std::invalid_argument); // mu wrong size
-    CHECK_THROWS_AS(CorrelatedRandomWalk(prices, mu, Matrix(3, 3), engines_for(hub, 2)),
-                    std::invalid_argument); // chol wrong size
-    CHECK_THROWS_AS(CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 3)),
-                    std::invalid_argument); // wrong number of engines
-    CHECK_THROWS_AS(CorrelatedRandomWalk(Vector(3), mu, chol, engines_for(hub, 2)),
-                    std::invalid_argument); // initial_prices wrong size
+    CHECK_THROWS_AS(
+        CorrelatedRandomWalk(prices, Vector(3), chol, engines_for(hub, 2), Dynamics::Arithmetic),
+        std::invalid_argument); // mu wrong size
+    CHECK_THROWS_AS(
+        CorrelatedRandomWalk(prices, mu, Matrix(3, 3), engines_for(hub, 2), Dynamics::Arithmetic),
+        std::invalid_argument); // chol wrong size
+    CHECK_THROWS_AS(
+        CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 3), Dynamics::Arithmetic),
+        std::invalid_argument); // wrong number of engines
+    CHECK_THROWS_AS(
+        CorrelatedRandomWalk(Vector(3), mu, chol, engines_for(hub, 2), Dynamics::Arithmetic),
+        std::invalid_argument); // initial_prices wrong size
 
-    CHECK_NOTHROW(CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 2)));
+    CHECK_NOTHROW(
+        CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 2), Dynamics::Arithmetic));
 }
 
 TEST_CASE("CorrelatedRandomWalk exposes the initial prices and asset count before any advance",
@@ -71,7 +79,7 @@ TEST_CASE("CorrelatedRandomWalk exposes the initial prices and asset count befor
     Vector mu = Vector::Zero(3);
     Matrix chol = Matrix::Identity(3, 3);
 
-    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 3)};
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 3), Dynamics::Arithmetic};
 
     CHECK(walk.asset_count() == 3);
     CHECK(max_abs_diff(walk.prices(), prices) < 1e-15);
@@ -92,7 +100,7 @@ TEST_CASE("CorrelatedRandomWalk::advance matches mu*dt + correlated_normal_incre
     chol << 1.2, 0.0, 0.3, 0.8;
     constexpr double dt = 0.1;
 
-    CorrelatedRandomWalk walk{prices, mu, chol, std::move(engines)};
+    CorrelatedRandomWalk walk{prices, mu, chol, std::move(engines), Dynamics::Arithmetic};
 
     Vector expected = prices;
     for (int tick = 0; tick < 5; ++tick) {
@@ -111,7 +119,7 @@ TEST_CASE("CorrelatedRandomWalk::reset restores both prices and engine state",
     mu << 0.01, 0.02;
     Matrix chol = Matrix::Identity(2, 2);
 
-    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2)};
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2), Dynamics::Arithmetic};
 
     walk.advance(0.5);
     walk.advance(0.5);
@@ -135,7 +143,7 @@ TEST_CASE("CorrelatedRandomWalk::advance(0.0) leaves prices unchanged",
     mu << 0.1, -0.1;
     Matrix chol = Matrix::Identity(2, 2);
 
-    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2)};
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2), Dynamics::Arithmetic};
     walk.advance(0.0);
 
     CHECK(walk.prices()(0) == Catch::Approx(42.0));
@@ -151,7 +159,7 @@ TEST_CASE("CorrelatedRandomWalk::advance rejects a negative dt via the PriceProc
     mu << 0.01, 0.02;
     Matrix chol = Matrix::Identity(2, 2);
 
-    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2)};
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2), Dynamics::Arithmetic};
 
     CHECK_THROWS_AS(walk.advance(-1.0), std::invalid_argument);
     // the rejected call must not have mutated prices or consumed any engine word
@@ -167,9 +175,115 @@ TEST_CASE("CorrelatedRandomWalk with chol == 0 is pure deterministic drift",
     mu << 1.0, -2.0;
     const Matrix chol = Matrix::Zero(2, 2);
 
-    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2)};
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2), Dynamics::Arithmetic};
     walk.advance(2.0);
 
     CHECK(walk.prices()(0) == Catch::Approx(102.0));
     CHECK(walk.prices()(1) == Catch::Approx(96.0));
+}
+
+TEST_CASE("CorrelatedRandomWalk with geometric dynamics rejects initial prices that are not "
+          "finite and positive",
+          "[process][correlated_random_walk][geometric]") {
+    const rng::RngHub hub{rng::Seed{0x8888'0001ULL}};
+    Vector mu = Vector::Zero(2);
+    const Matrix chol = Matrix::Identity(2, 2);
+
+    for (const double bad : {0.0,
+                             -1.0,
+                             std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::quiet_NaN()}) {
+        Vector prices(2);
+        prices << 100.0, bad;
+        CHECK_THROWS_AS(
+            CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 2), Dynamics::Geometric),
+            std::invalid_argument);
+        // the arithmetic walk does not care about the sign of a price
+        if (std::isfinite(bad)) {
+            CHECK_NOTHROW(
+                CorrelatedRandomWalk(prices, mu, chol, engines_for(hub, 2), Dynamics::Arithmetic));
+        }
+    }
+}
+
+TEST_CASE("CorrelatedRandomWalk geometric advance matches p * exp((mu - variance/2) dt + "
+          "increment) over several ticks",
+          "[process][correlated_random_walk][geometric]") {
+    const rng::RngHub hub{rng::Seed{0x8888'0002ULL}};
+    std::vector<rng::RngEngine> engines = engines_for(hub, 2);
+    std::vector<rng::RngEngine> reference = engines;
+
+    Vector prices(2);
+    prices << 100.0, 200.0;
+    Vector mu(2);
+    mu << 0.05, -0.10;
+    Matrix chol(2, 2);
+    chol << 0.3, 0.0, 0.1, 0.2;
+    constexpr double dt = 0.1;
+    // variance is the diagonal of L L^T: the cross term of row 1 counts
+    Vector variance(2);
+    variance << 0.3 * 0.3, (0.1 * 0.1) + (0.2 * 0.2);
+
+    CorrelatedRandomWalk walk{prices, mu, chol, std::move(engines), Dynamics::Geometric};
+
+    Vector expected = prices;
+    for (int tick = 0; tick < 5; ++tick) {
+        walk.advance(dt);
+        const Vector log_return =
+            ((mu - 0.5 * variance) * dt) + correlated_normal_increment(chol, reference, dt);
+        expected = expected.cwiseProduct(log_return.array().exp().matrix());
+        CHECK(max_abs_diff(walk.prices(), expected) < 1e-12);
+    }
+}
+
+TEST_CASE("CorrelatedRandomWalk geometric with chol == 0 grows at exp(mu dt)",
+          "[process][correlated_random_walk][geometric]") {
+    const rng::RngHub hub{rng::Seed{0x8888'0003ULL}};
+    Vector prices(2);
+    prices << 100.0, 100.0;
+    Vector mu(2);
+    mu << 0.5, -0.5;
+
+    CorrelatedRandomWalk walk{
+        prices, mu, Matrix::Zero(2, 2), engines_for(hub, 2), Dynamics::Geometric};
+    walk.advance(2.0);
+
+    CHECK(walk.prices()(0) == Catch::Approx(100.0 * std::exp(1.0)));
+    CHECK(walk.prices()(1) == Catch::Approx(100.0 * std::exp(-1.0)));
+}
+
+TEST_CASE("CorrelatedRandomWalk geometric prices stay positive however volatile",
+          "[process][correlated_random_walk][geometric]") {
+    const rng::RngHub hub{rng::Seed{0x8888'0004ULL}};
+    Vector prices(2);
+    prices << 1.0, 1.0;
+    Vector mu = Vector::Zero(2);
+    const Matrix chol = 3.0 * Matrix::Identity(2, 2);
+
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, 2), Dynamics::Geometric};
+    for (int tick = 0; tick < 500; ++tick) {
+        walk.advance(1.0);
+        CHECK(walk.prices().minCoeff() >= 0.0);
+    }
+}
+
+TEST_CASE("CorrelatedRandomWalk geometric mu is the expected return rate",
+          "[process][correlated_random_walk][geometric]") {
+    // 2000 independent assets, one step: the mean of p1 / p0 must be exp(mu dt)
+    // (without the Ito correction it would be exp((mu + sigma^2/2) dt), about 5%
+    // higher here, far outside the sampling error of about 0.7%).
+    constexpr int n = 2000;
+    constexpr double mu_rate = 0.05;
+    constexpr double sigma = 0.3;
+    const rng::RngHub hub{rng::Seed{0x8888'0005ULL}};
+
+    const Vector prices = Vector::Constant(n, 100.0);
+    const Vector mu = Vector::Constant(n, mu_rate);
+    const Matrix chol = sigma * Matrix::Identity(n, n);
+
+    CorrelatedRandomWalk walk{prices, mu, chol, engines_for(hub, n), Dynamics::Geometric};
+    walk.advance(1.0);
+
+    const double mean_ratio = walk.prices().mean() / 100.0;
+    CHECK(mean_ratio == Catch::Approx(std::exp(mu_rate)).margin(0.02));
 }
