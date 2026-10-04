@@ -50,7 +50,8 @@ public:
     /// strategy, and one RngEngine per asset for adverse flow and for
     /// latency. Throws std::invalid_argument for anything inconsistent:
     /// `config.assets` empty or its size disagreeing with `correlation`'s
-    /// dimension or `config.strategy`'s per-asset vectors; a
+    /// dimension or `config.strategy`'s per-asset vectors; an asset without a
+    /// symbol, or two assets with the same symbol; a
     /// FactorModelSpec process with an asset missing `factor_model`, or a
     /// RandomWalkSpec process with one present; a correlation that is not
     /// symmetric positive definite; anything the strategy's or the

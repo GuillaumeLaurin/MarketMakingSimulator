@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <variant>
 #include <vector>
@@ -28,7 +29,8 @@ namespace mm = mms::mm;
 namespace {
 
 sim::AssetSpec minimal_asset(mm::Price mid) {
-    return sim::AssetSpec{.initial_mid = mid,
+    return sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
+                          .initial_mid = mid,
                           .price_volatility = 0.2,
                           .factor_model = std::nullopt,
                           .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}};

@@ -59,7 +59,8 @@ bool advanced_by(math::rng::RngEngine engine, math::rng::RngEngine reference, in
 }
 
 sim::AssetSpec flow_asset(double lambda, double correlation, sim::DistributionSpec size) {
-    return sim::AssetSpec{.initial_mid = 100.0,
+    return sim::AssetSpec{.symbol = "FLOW",
+                          .initial_mid = 100.0,
                           .price_volatility = 0.2,
                           .factor_model = std::nullopt,
                           .adverse_flow_lambda = lambda,

@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -278,7 +279,8 @@ sim::SimulationConfig two_asset_config() {
     std::vector<sim::AssetSpec> assets;
     for (const double mid : {100.0, 150.0}) {
         assets.push_back(
-            sim::AssetSpec{.initial_mid = mid,
+            sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
+                           .initial_mid = mid,
                            .maker_fee_bps = 1.0,
                            .price_volatility = 1.0,
                            .mu = 0.0,

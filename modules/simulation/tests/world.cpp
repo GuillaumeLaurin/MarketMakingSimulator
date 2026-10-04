@@ -12,12 +12,14 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <mm/requote.hpp>
 #include <mm/strategy_config.hpp>
 #include <mm/types.hpp>
@@ -39,7 +41,8 @@ sim::AssetSpec asset(mm::Price mid,
                      double mu = 0.0,
                      double fee_bps = 0.0,
                      std::optional<sim::FactorModelAssetData> factor = std::nullopt) {
-    return sim::AssetSpec{.initial_mid = mid,
+    return sim::AssetSpec{.symbol = "",
+                          .initial_mid = mid,
                           .maker_fee_bps = fee_bps,
                           .price_volatility = volatility,
                           .mu = mu,
@@ -66,6 +69,12 @@ mm::StrategyConfig strategy_for(std::size_t assets) {
 sim::SimulationConfig config_of(std::vector<sim::AssetSpec> assets,
                                 sim::PriceProcessSpec process = sim::RandomWalkSpec{},
                                 std::uint64_t seed = 42) {
+    // A test that does not care about names leaves the symbol empty and gets "ASSET<i>".
+    for (std::size_t i = 0; i < assets.size(); ++i) {
+        if (assets[i].symbol.empty()) {
+            assets[i].symbol = "ASSET" + std::to_string(i);
+        }
+    }
     const std::size_t n = assets.size();
     const auto size = static_cast<Eigen::Index>(n);
     return sim::SimulationConfig{
@@ -83,6 +92,26 @@ sim::SimulationConfig config_of(std::vector<sim::AssetSpec> assets,
 sim::FactorModelAssetData factor_data(double beta, double idio) {
     return sim::FactorModelAssetData{.beta = math::Vector::Constant(1, beta),
                                      .idiosyncratic_volatility = idio};
+}
+
+sim::AssetSpec named(std::string symbol, sim::AssetSpec spec) {
+    spec.symbol = std::move(symbol);
+    return spec;
+}
+
+// The price of one asset after `ticks` ticks of dt = 1, read by symbol.
+double price_after(const sim::SimulationConfig& config, const std::string& symbol, int ticks) {
+    sim::World world(config);
+    for (int tick = 0; tick < ticks; ++tick) {
+        world.price_process().advance(1.0);
+    }
+    for (std::size_t i = 0; i < config.assets.size(); ++i) {
+        if (config.assets[i].symbol == symbol) {
+            return world.price_process().prices()(static_cast<Eigen::Index>(i));
+        }
+    }
+    FAIL("no such symbol in the config");
+    return 0.0;
 }
 
 } // namespace
@@ -335,4 +364,124 @@ TEST_CASE("The constructor propagates the strategy's own validation", "[simulati
     config.strategy.gamma = 0.0; // AvellanedaStoikovStrategy rejects gamma <= 0
 
     CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
+}
+
+// ------------------------------------------------------------------ symbols
+
+TEST_CASE("An asset without a symbol is rejected", "[simulation][world][symbol]") {
+    sim::SimulationConfig config = config_of({asset(100.0, 0.2), asset(50.0, 0.3)});
+    config.assets[1].symbol.clear();
+
+    CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
+}
+
+TEST_CASE("Two assets with the same symbol are rejected, and the message names it",
+          "[simulation][world][symbol]") {
+    const sim::SimulationConfig config = config_of({named("AAPL", asset(100.0, 0.2)),
+                                                    named("MSFT", asset(50.0, 0.3)),
+                                                    named("AAPL", asset(70.0, 0.1))});
+
+    CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
+    CHECK_THROWS_WITH(sim::World(config), Catch::Matchers::ContainsSubstring("AAPL"));
+}
+
+TEST_CASE("Symbols differing only by case are two assets", "[simulation][world][symbol]") {
+    const sim::SimulationConfig config =
+        config_of({named("AAPL", asset(100.0, 0.2)), named("aapl", asset(50.0, 0.3))});
+
+    CHECK_NOTHROW(sim::World(config));
+}
+
+TEST_CASE("Adding an asset, or reordering the basket, leaves an asset's own streams alone",
+          "[simulation][world][symbol]") {
+    const sim::SimulationConfig small =
+        config_of({named("AAPL", asset(100.0, 0.2)), named("MSFT", asset(50.0, 0.3))});
+    const sim::SimulationConfig bigger = config_of({named("MSFT", asset(50.0, 0.3)),
+                                                    named("NEWCO", asset(20.0, 0.5)),
+                                                    named("AAPL", asset(100.0, 0.2))});
+
+    sim::World a(small);
+    sim::World b(bigger);
+
+    // AAPL is index 0 in one world and 2 in the other: the streams still agree.
+    CHECK(a.adverse_flow_engine(0) == b.adverse_flow_engine(2));
+    CHECK(a.latency_engine(0) == b.latency_engine(2));
+    CHECK(a.adverse_flow_engine(1) == b.adverse_flow_engine(0)); // MSFT, likewise
+    // And it is its own stream, not another asset's.
+    CHECK(a.adverse_flow_engine(0) != a.adverse_flow_engine(1));
+    CHECK(b.adverse_flow_engine(1) != b.adverse_flow_engine(2));
+}
+
+TEST_CASE("Renaming an asset changes its streams", "[simulation][world][symbol]") {
+    sim::World a(config_of({named("AAPL", asset(100.0, 0.2))}));
+    sim::World b(config_of({named("AAPL2", asset(100.0, 0.2))}));
+
+    CHECK(a.adverse_flow_engine(0) != b.adverse_flow_engine(0));
+    CHECK(a.latency_engine(0) != b.latency_engine(0));
+}
+
+TEST_CASE("A random-walk price path does not depend on the other assets in the basket",
+          "[simulation][world][symbol]") {
+    // Identity correlation: nothing couples the assets, so only the symbol
+    // (the stream) and the asset's own parameters can matter.
+    const sim::SimulationConfig small =
+        config_of({named("AAPL", asset(100.0, 0.2, 0.01)), named("MSFT", asset(50.0, 0.3))});
+    const sim::SimulationConfig bigger = config_of({named("NEWCO", asset(20.0, 0.5)),
+                                                    named("MSFT", asset(50.0, 0.3)),
+                                                    named("AAPL", asset(100.0, 0.2, 0.01))});
+
+    CHECK(price_after(small, "AAPL", 25) == price_after(bigger, "AAPL", 25));
+    CHECK(price_after(small, "MSFT", 25) == price_after(bigger, "MSFT", 25));
+    // A path that moves at all, or this would hold for the wrong reason.
+    CHECK(price_after(small, "AAPL", 25) != 100.0);
+}
+
+TEST_CASE("A factor-model price path does not depend on the other assets either",
+          "[simulation][world][symbol]") {
+    const sim::FactorModelSpec one_factor{.factor_count = 1};
+    const sim::SimulationConfig small =
+        config_of({named("AAPL", asset(100.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1))),
+                   named("MSFT", asset(50.0, 0.3, 0.0, 0.0, factor_data(0.8, 0.2)))},
+                  one_factor);
+    const sim::SimulationConfig bigger =
+        config_of({named("MSFT", asset(50.0, 0.3, 0.0, 0.0, factor_data(0.8, 0.2))),
+                   named("NEWCO", asset(20.0, 0.5, 0.0, 0.0, factor_data(1.5, 0.4))),
+                   named("AAPL", asset(100.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1)))},
+                  one_factor);
+
+    CHECK(price_after(small, "AAPL", 25) == price_after(bigger, "AAPL", 25));
+    CHECK(price_after(small, "MSFT", 25) == price_after(bigger, "MSFT", 25));
+    CHECK(price_after(small, "AAPL", 25) != 100.0);
+}
+
+TEST_CASE("Each common factor is its own stream", "[simulation][world][symbol]") {
+    // Asset A loads only on factor 0, asset B only on factor 1, neither has
+    // noise of its own: their moves are the two factors' draws. Two factors
+    // sharing one stream would move them identically.
+    math::Vector on_first(2);
+    on_first << 1.0, 0.0;
+    math::Vector on_second(2);
+    on_second << 0.0, 1.0;
+    const sim::SimulationConfig config = config_of(
+        {named("A",
+               asset(100.0,
+                     0.2,
+                     0.0,
+                     0.0,
+                     sim::FactorModelAssetData{.beta = on_first, .idiosyncratic_volatility = 0.0})),
+         named(
+             "B",
+             asset(100.0,
+                   0.2,
+                   0.0,
+                   0.0,
+                   sim::FactorModelAssetData{.beta = on_second, .idiosyncratic_volatility = 0.0}))},
+        sim::FactorModelSpec{.factor_count = 2});
+
+    const double move_a = price_after(config, "A", 10) - 100.0;
+    const double move_b = price_after(config, "B", 10) - 100.0;
+
+    CHECK(move_a != 0.0);
+    CHECK(move_b != 0.0);
+    CHECK(move_a != move_b);
 }

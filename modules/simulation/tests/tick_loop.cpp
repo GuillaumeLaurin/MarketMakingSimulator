@@ -54,7 +54,8 @@ struct Knobs {
 };
 
 sim::AssetSpec asset_for(const Knobs& knobs, mm::Price mid) {
-    return sim::AssetSpec{.initial_mid = mid,
+    return sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
+                          .initial_mid = mid,
                           .maker_fee_bps = knobs.fee_bps,
                           .price_volatility = knobs.volatility,
                           .mu = knobs.mu,

@@ -30,7 +30,8 @@ TEST_CASE("<simulation/simulation.hpp> exposes the whole simulation module",
 
     // size_spec.hpp, delay_spec.hpp, price_process_spec.hpp, asset_spec.hpp,
     // latency_config.hpp, simulation_config.hpp: the whole config.
-    const AssetSpec asset{.initial_mid = 100.0,
+    const AssetSpec asset{.symbol = "AAPL",
+                          .initial_mid = 100.0,
                           .maker_fee_bps = 1.0,
                           .price_volatility = 1.0,
                           .mu = 0.0,

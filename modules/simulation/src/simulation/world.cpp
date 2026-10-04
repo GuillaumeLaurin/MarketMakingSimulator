@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 
@@ -32,8 +33,28 @@ namespace {
     throw std::invalid_argument(std::string("World: ") + message);
 }
 
-math::rng::AssetKey asset_key(std::size_t asset) {
-    return math::rng::AssetKey{static_cast<std::uint64_t>(asset)};
+math::rng::AssetKey asset_key(const AssetSpec& asset) {
+    return math::rng::asset_key_of(asset.symbol);
+}
+
+// A factor is not an asset: it has no symbol and is identified by its index.
+// It lives in its own subsystem (PriceFactor), so its keys can never meet an
+// asset's.
+math::rng::AssetKey factor_key(std::size_t factor) {
+    return math::rng::AssetKey{static_cast<std::uint64_t>(factor)};
+}
+
+void validate_symbols(const std::vector<AssetSpec>& assets) {
+    std::unordered_set<std::uint64_t> seen;
+    for (const AssetSpec& asset : assets) {
+        if (asset.symbol.empty()) {
+            reject("every asset needs a symbol");
+        }
+        const auto key = static_cast<std::uint64_t>(asset_key(asset));
+        if (!seen.insert(key).second) {
+            reject(("two assets share the symbol " + asset.symbol).c_str());
+        }
+    }
 }
 
 std::vector<mm::LedgerAsset> gather_ledger_assets(const SimulationConfig& config) {
@@ -51,8 +72,8 @@ std::vector<math::rng::RngEngine> build_engines(const SimulationConfig& config,
     const math::rng::RngHub hub(config.master_seed);
     std::vector<math::rng::RngEngine> engines;
     engines.reserve(config.assets.size());
-    for (std::size_t i = 0; i < config.assets.size(); ++i) {
-        engines.push_back(hub.engine_for({.subsystem = subsystem, .asset = asset_key(i)}));
+    for (const AssetSpec& asset : config.assets) {
+        engines.push_back(hub.engine_for({.subsystem = subsystem, .asset = asset_key(asset)}));
     }
     return engines;
 }
@@ -62,6 +83,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
     if (assets.empty()) {
         reject("at least one asset is required");
     }
+    validate_symbols(assets);
     const auto n = static_cast<Eigen::Index>(assets.size());
     if (config.correlation.rows() != n || config.correlation.cols() != n) {
         reject("correlation must be N x N, N the number of assets");
@@ -97,7 +119,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                         reject("an asset has factor_model data but the process is RandomWalkSpec");
                     }
                     engines.push_back(hub.engine_for(
-                        {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(i)}));
+                        {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(assets[i])}));
                 }
                 return std::make_unique<math::process::CorrelatedRandomWalk>(
                     initial_prices, mu, cov.cholesky(), std::move(engines));
@@ -121,7 +143,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                     beta.row(index) = data.beta.transpose();
                     idio_vol(index) = data.idiosyncratic_volatility;
                     price_engines.push_back(hub.engine_for(
-                        {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(i)}));
+                        {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(assets[i])}));
                 }
 
                 std::vector<math::rng::RngEngine> factor_engines;
@@ -129,7 +151,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                 for (std::size_t f = 0; f < process_spec.factor_count; ++f) {
                     factor_engines.push_back(hub.engine_for({
                         .subsystem = math::rng::Subsystem::PriceFactor,
-                        .asset = asset_key(f),
+                        .asset = factor_key(f),
                     }));
                 }
 
