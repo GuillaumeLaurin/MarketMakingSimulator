@@ -1,5 +1,5 @@
 /// \file
-/// Implementation of World
+/// Implementation of World (<simulation/world.hpp>).
 
 #include <cstdint>
 #include <stdexcept>

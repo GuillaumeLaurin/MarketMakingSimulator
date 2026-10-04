@@ -1,5 +1,5 @@
 /// \file
-/// Implementation of the delay draws
+/// Implementation of the delay draws (<simulation/latency.hpp>).
 
 #include <algorithm>
 #include <cmath>
