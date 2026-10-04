@@ -733,6 +733,23 @@ TEST_CASE("Each asset is booked on its own", "[simulation][tick_loop]") {
     check_consistent(world, loop);
 }
 
+TEST_CASE("Cancels of the same OrderId on different assets in one tick do not collide",
+          "[simulation][tick_loop]") {
+    // Every engine numbers its orders from 1, so two assets hold orders with
+    // the same id. The price rises on both, so both assets cancel and replace
+    // their quotes in the same tick: two cancels carrying the same id value.
+    const sim::SimulationConfig config = make_config({.assets = 2, .mu = 5.0});
+    sim::World world(config);
+    sim::TickLoop loop(world, config);
+
+    for (int tick = 0; tick < 6; ++tick) {
+        CHECK_NOTHROW(loop.step());
+        check_consistent(world, loop);
+    }
+    // Both assets really did replace their quotes (the ids are those of replacements).
+    CHECK(loop.live_quotes()[0].bid->id == loop.live_quotes()[1].bid->id);
+}
+
 TEST_CASE("Every observer sees the same run", "[simulation][tick_loop]") {
     const sim::SimulationConfig config = make_config({.lambda = 3.0});
     sim::World world(config);

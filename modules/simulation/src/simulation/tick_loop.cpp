@@ -188,7 +188,7 @@ void TickLoop::schedule_requests(const math::Vector& prices) {
             time_ + draw_delay(latency_.quote_delay, world_.latency_engine(cancel.asset));
         world_.event_queue().schedule(due, cancel);
         ++in_flight_[cancel.asset][side_index(side)];
-        cancel_sides_[cancel.id] = side;
+        cancel_sides_[{cancel.asset, cancel.id}] = side;
         cancel_due[(2U * cancel.asset) + side_index(side)] = due;
     }
 
@@ -240,8 +240,8 @@ void TickLoop::execute(const SimulationEvent& event) {
                 // False when the quote was filled away before this arrived.
                 static_cast<void>(world_.matching_engine(request.asset).cancel(request.id));
 
-                const mm::Side side = cancel_sides_.at(request.id);
-                cancel_sides_.erase(request.id);
+                const mm::Side side = cancel_sides_.at({request.asset, request.id});
+                cancel_sides_.erase({request.asset, request.id});
                 std::optional<mm::LiveQuote>& slot = live_slot(live_, request.asset, side);
                 if (slot.has_value() && slot->id == request.id) {
                     slot.reset();

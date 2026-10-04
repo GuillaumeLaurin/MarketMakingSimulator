@@ -11,6 +11,7 @@
 #include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>
 #include <simulation/results.hpp>
+#include <simulation/results_observer.hpp>
 #include <simulation/simulation_config.hpp>
 #include <simulation/simulation_observer.hpp>
 #include <simulation/size_spec.hpp>

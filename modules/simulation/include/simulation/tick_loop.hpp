@@ -17,8 +17,10 @@
 /// not re-planned until it has executed.
 
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <mm/quote.hpp>
@@ -88,7 +90,8 @@ private:
     std::vector<std::vector<int>> in_flight_; // per asset, per side: requests not yet executed
     std::vector<SimulationObserver*> observers_;
     std::vector<std::unique_ptr<EngineObserver>> engine_observers_;
-    std::unordered_map<mm::OrderId, mm::Side> cancel_sides_;
+    // Keyed by (asset, id): every engine numbers its orders from 1, so an id alone is ambiguous.
+    std::map<std::pair<mm::AssetId, mm::OrderId>, mm::Side> cancel_sides_;
     std::optional<mm::Side> submitting_side_;
     mm::Quantity submit_filled_ = 0;
     std::vector<bool> quotes_changed_;
