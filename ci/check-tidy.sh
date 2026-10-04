@@ -9,9 +9,9 @@
 # Set MMS_TIDY_BASE to a git ref (for example origin/main) to analyse only what
 # changed since it, which is what pull requests do. A changed header re-checks
 # every translation unit of its module, since any of them may include it. A
-# change to the tidy config or to the CMake files that shape the compile
-# database re-checks everything, as does an unset MMS_TIDY_BASE (pushes to
-# main, local runs).
+# change to the tidy config, to the CMake files that shape the compile
+# database, or to this script and the workflow that runs it re-checks
+# everything, as does an unset MMS_TIDY_BASE (pushes to main, local runs).
 . "$(dirname "$0")/lib.sh"
 cd "$(repo_root)"
 
@@ -37,8 +37,8 @@ select_sources() {
     changed=$(git diff --name-only --diff-filter=ACMR "${MMS_TIDY_BASE}...HEAD") ||
         die "cannot diff against ${MMS_TIDY_BASE} (is it fetched? use fetch-depth: 0)"
 
-    if printf '%s\n' "$changed" | grep -qE '(^|/)\.clang-tidy$|^CMakeLists\.txt$|^CMakePresets\.json$|^vcpkg\.json$|^cmake/'; then
-        log "tidy config or build files changed: analysing everything" >&2
+    if printf '%s\n' "$changed" | grep -qE '(^|/)\.clang-tidy$|^CMakeLists\.txt$|^CMakePresets\.json$|^vcpkg\.json$|^cmake/|^ci/check-tidy\.sh$|^\.github/workflows/ci\.yml$'; then
+        log "tidy config, build files or the lint pipeline itself changed: analysing everything" >&2
         all_sources
         return
     fi
@@ -87,6 +87,8 @@ mapfile -t files <<<"$selected"
 
 if [ "${#files[@]}" -eq 0 ]; then
     log "no C/C++ sources to analyse, nothing to tidy"
+    # Make the skip visible on the run's summary page, not only in the log.
+    [ -z "${GITHUB_ACTIONS:-}" ] || echo "::notice::clang-tidy had nothing to analyse for this selection"
     exit 0
 fi
 
