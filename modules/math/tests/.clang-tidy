@@ -2,6 +2,8 @@
 # Test translation units. Inherit the project checks, but silence the ones that
 # only fire inside Catch2's TEST_CASE / SECTION / CHECK macro expansions:
 #   - avoid-do-while         : Catch2 macros expand to do { ... } while (false)
+#   - cognitive-complexity   : every CHECK expands to nested if/loop code that is
+#                              counted against the TEST_CASE (Catch2 names it dummyFunctionN)
 #   - use-anonymous-namespace: Catch2 generates `static void` test functions
 #   - err58 / throwing-static: Catch2's static test registrars have throwing ctors
 #   - c2y-extensions         : Catch2's unique-name macros use __COUNTER__, which
@@ -9,6 +11,7 @@
 InheritParentConfig: true
 Checks: >
   -cppcoreguidelines-avoid-do-while,
+  -readability-function-cognitive-complexity,
   -misc-use-anonymous-namespace,
   -cert-err58-cpp,
   -bugprone-throwing-static-initialization,

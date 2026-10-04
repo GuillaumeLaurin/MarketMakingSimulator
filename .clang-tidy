@@ -25,5 +25,9 @@ Checks: >
   -readability-magic-numbers
 
 WarningsAsErrors: ''
-HeaderFilterRegex: '(modules|src|include)/.*\.(hpp|hxx|h)$'
+# Never report diagnostics from system headers (the standard library and the
+# vcpkg dependencies: Catch2, Eigen, fmt, ...) nor from any header outside this
+# repository's own code, whatever flags the compile database carries.
+SystemHeaders: false
+HeaderFilterRegex: '.*/(modules/[^/]+/(include|src|tests|bench)|include/app|src/app)/.*\.(hpp|hxx|h)$'
 FormatStyle: file

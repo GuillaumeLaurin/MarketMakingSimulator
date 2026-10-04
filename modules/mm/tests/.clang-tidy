@@ -1,0 +1,28 @@
+---
+# Test translation units. Inherit the project checks, but silence the ones that
+# only fire inside Catch2's TEST_CASE / SECTION / CHECK macro expansions:
+#   - avoid-do-while         : Catch2 macros expand to do { ... } while (false)
+#   - cognitive-complexity   : every CHECK expands to nested if/loop code that is
+#                              counted against the TEST_CASE (Catch2 names it dummyFunctionN)
+#   - use-anonymous-namespace: Catch2 generates `static void` test functions
+#   - err58 / throwing-static: Catch2's static test registrars have throwing ctors
+#   - c2y-extensions         : Catch2's unique-name macros use __COUNTER__, which
+#                              clang-tidy's frontend flags now that it tracks C2y
+InheritParentConfig: true
+Checks: >
+  -cppcoreguidelines-avoid-do-while,
+  -readability-function-cognitive-complexity,
+  -misc-use-anonymous-namespace,
+  -cert-err58-cpp,
+  -bugprone-throwing-static-initialization,
+  -clang-diagnostic-c2y-extensions
+# The compile database carries -Werror; keep __COUNTER__ (used by Catch2's
+# unique-name macros) from being promoted to a hard error under a recent clang.
+# -Wno-unknown-warning-option keeps this harmless on clang versions without the
+# flag. Unknown *driver* args (e.g. GCC's -fno-keep-inline-dllexport when the
+# database was produced by g++) are not filterable here: run check-tidy against
+# a clang-based preset.
+ExtraArgs:
+  - -Wno-unknown-warning-option
+  - -Wno-c2y-extensions
+...
