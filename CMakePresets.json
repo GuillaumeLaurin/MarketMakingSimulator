@@ -44,11 +44,22 @@
         "MMS_ENABLE_LTO": "ON"
       }
     },
+    {
+      "name": "bench-base",
+      "hidden": true,
+      "inherits": ["release-base"],
+      "cacheVariables": {
+        "VCPKG_MANIFEST_FEATURES": "benchmarks",
+        "MMS_BUILD_BENCHMARKS": "ON"
+      }
+    },
 
     { "name": "dev",           "displayName": "Dev (native toolchain)",  "inherits": ["dev-base", "vcpkg"] },
     { "name": "dev-mingw",     "displayName": "Dev (MinGW-w64)",         "inherits": ["mingw", "dev-base", "vcpkg"] },
     { "name": "release",       "displayName": "Release (native)",        "inherits": ["release-base", "vcpkg"] },
     { "name": "release-mingw", "displayName": "Release (MinGW-w64)",     "inherits": ["mingw", "release-base", "vcpkg"] },
+    { "name": "bench",         "displayName": "Benchmarks (Release, native)",  "inherits": ["bench-base", "vcpkg"] },
+    { "name": "bench-mingw",   "displayName": "Benchmarks (Release, MinGW-w64)", "inherits": ["mingw", "bench-base", "vcpkg"] },
 
     {
       "name": "asan",
@@ -77,6 +88,8 @@
     { "name": "dev-mingw",     "configurePreset": "dev-mingw" },
     { "name": "release",       "configurePreset": "release" },
     { "name": "release-mingw", "configurePreset": "release-mingw" },
+    { "name": "bench",         "configurePreset": "bench" },
+    { "name": "bench-mingw",   "configurePreset": "bench-mingw" },
     { "name": "asan",          "configurePreset": "asan" },
     { "name": "coverage",      "configurePreset": "coverage" }
   ],
