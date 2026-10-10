@@ -122,11 +122,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                         {.subsystem = math::rng::Subsystem::Price, .asset = asset_key(assets[i])}));
                 }
                 return std::make_unique<math::process::CorrelatedRandomWalk>(
-                    initial_prices,
-                    mu,
-                    cov.cholesky(),
-                    std::move(engines),
-                    math::process::Dynamics::Arithmetic);
+                    initial_prices, mu, cov.cholesky(), std::move(engines), process_spec.dynamics);
             } else {
                 static_assert(std::is_same_v<Spec, FactorModelSpec>);
                 const auto k = static_cast<Eigen::Index>(process_spec.factor_count);
@@ -159,15 +155,14 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
                     }));
                 }
 
-                return std::make_unique<math::process::FactorModel>(
-                    initial_prices,
-                    mu,
-                    beta,
-                    math::Matrix::Identity(k, k),
-                    idio_vol,
-                    std::move(price_engines),
-                    std::move(factor_engines),
-                    math::process::Dynamics::Arithmetic);
+                return std::make_unique<math::process::FactorModel>(initial_prices,
+                                                                    mu,
+                                                                    beta,
+                                                                    math::Matrix::Identity(k, k),
+                                                                    idio_vol,
+                                                                    std::move(price_engines),
+                                                                    std::move(factor_engines),
+                                                                    process_spec.dynamics);
             }
         },
         config.process);

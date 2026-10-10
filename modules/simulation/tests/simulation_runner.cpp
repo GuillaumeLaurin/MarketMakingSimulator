@@ -6,6 +6,7 @@
 /// the same run AFTER the built-in one, and that run_simulation is the same
 /// computation as a runner driven by hand.
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -20,6 +21,7 @@
 #include <mm/strategy_config.hpp>
 #include <mm/types.hpp>
 
+#include <math/process/dynamics.hpp>
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
 #include <simulation/simulation_runner.hpp>
@@ -52,7 +54,7 @@ sim::SimulationConfig make_config(std::int64_t tick_count, std::uint64_t seed = 
     return sim::SimulationConfig{
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(2, 2),
-        .process = sim::RandomWalkSpec{},
+        .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
         .strategy =
             mm::StrategyConfig{
                 .gamma = 2.0,
@@ -339,4 +341,21 @@ TEST_CASE("An observer added after some ticks sees only the following ones",
     runner.run();
 
     CHECK(probe.ticks_seen == 6);
+}
+
+TEST_CASE("A run under the default geometric dynamics completes with sane results",
+          "[simulation][runner][dynamics]") {
+    sim::SimulationConfig config = make_config(50);
+    config.process = sim::RandomWalkSpec{};
+    for (sim::AssetSpec& asset : config.assets) {
+        asset.price_volatility = 0.01; // relative now: 1% per sqrt(second)
+    }
+
+    sim::SimulationRunner runner(config);
+    const sim::Results& results = runner.run();
+
+    CHECK(runner.finished());
+    CHECK(results.assets.size() == 2);
+    CHECK(std::isfinite(results.portfolio.final_breakdown.total()));
+    CHECK(runner.world().price_process().prices().minCoeff() > 0.0);
 }

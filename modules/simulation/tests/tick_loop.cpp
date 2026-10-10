@@ -25,6 +25,7 @@
 #include <mm/strategy_config.hpp>
 #include <mm/types.hpp>
 
+#include <math/process/dynamics.hpp>
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
 #include <simulation/asset_spec.hpp>
@@ -89,7 +90,7 @@ sim::SimulationConfig make_config(const Knobs& knobs = {}) {
     return sim::SimulationConfig{
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(n, n),
-        .process = sim::RandomWalkSpec{},
+        .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
         .strategy = strategy_for(knobs.assets),
         .latency = {.quote_delay = knobs.quote_delay, .adverse_flow_delay = knobs.adverse_delay},
         .requote_threshold_ticks = knobs.threshold,

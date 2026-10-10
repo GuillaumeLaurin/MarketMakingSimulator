@@ -8,6 +8,7 @@
 /// the first place with enough context to check config pieces against each
 /// other).
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -24,6 +25,7 @@
 #include <mm/strategy_config.hpp>
 #include <mm/types.hpp>
 
+#include <math/process/dynamics.hpp>
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
 #include <simulation/asset_spec.hpp>
@@ -67,7 +69,9 @@ mm::StrategyConfig strategy_for(std::size_t assets) {
 }
 
 sim::SimulationConfig config_of(std::vector<sim::AssetSpec> assets,
-                                sim::PriceProcessSpec process = sim::RandomWalkSpec{},
+                                sim::PriceProcessSpec process =
+                                    sim::RandomWalkSpec{
+                                        .dynamics = mms::math::process::Dynamics::Arithmetic},
                                 std::uint64_t seed = 42) {
     // A test that does not care about names leaves the symbol empty and gets "ASSET<i>".
     for (std::size_t i = 0; i < assets.size(); ++i) {
@@ -438,7 +442,8 @@ TEST_CASE("A random-walk price path does not depend on the other assets in the b
 
 TEST_CASE("A factor-model price path does not depend on the other assets either",
           "[simulation][world][symbol]") {
-    const sim::FactorModelSpec one_factor{.factor_count = 1};
+    const sim::FactorModelSpec one_factor{.factor_count = 1,
+                                          .dynamics = mms::math::process::Dynamics::Arithmetic};
     const sim::SimulationConfig small =
         config_of({named("AAPL", asset(100.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1))),
                    named("MSFT", asset(50.0, 0.3, 0.0, 0.0, factor_data(0.8, 0.2)))},
@@ -476,7 +481,8 @@ TEST_CASE("Each common factor is its own stream", "[simulation][world][symbol]")
                    0.0,
                    0.0,
                    sim::FactorModelAssetData{.beta = on_second, .idiosyncratic_volatility = 0.0}))},
-        sim::FactorModelSpec{.factor_count = 2});
+        sim::FactorModelSpec{.factor_count = 2,
+                             .dynamics = mms::math::process::Dynamics::Arithmetic});
 
     const double move_a = price_after(config, "A", 10) - 100.0;
     const double move_b = price_after(config, "B", 10) - 100.0;
@@ -484,4 +490,76 @@ TEST_CASE("Each common factor is its own stream", "[simulation][world][symbol]")
     CHECK(move_a != 0.0);
     CHECK(move_b != 0.0);
     CHECK(move_a != move_b);
+}
+
+TEST_CASE("Specs are geometric by default: mu is a return rate", "[simulation][world][dynamics]") {
+    // Volatility next to zero, so the price is the drift alone: 100 * exp(0.1)
+    // when geometric, 100 + 0.1 when arithmetic.
+    const double geometric =
+        price_after(config_of({asset(100.0, 1e-9, 0.1)}, sim::RandomWalkSpec{}), "ASSET0", 1);
+    CHECK(geometric == Catch::Approx(100.0 * std::exp(0.1)));
+
+    const sim::SimulationConfig factor_config =
+        config_of({asset(100.0, 1e-9, 0.1, 0.0, factor_data(0.0, 1e-9))},
+                  sim::FactorModelSpec{.factor_count = 1});
+    CHECK(price_after(factor_config, "ASSET0", 1) == Catch::Approx(100.0 * std::exp(0.1)));
+}
+
+TEST_CASE("Arithmetic dynamics keep mu in price units", "[simulation][world][dynamics]") {
+    using mms::math::process::Dynamics;
+    const sim::RandomWalkSpec arithmetic{.dynamics = Dynamics::Arithmetic};
+
+    CHECK(price_after(config_of({asset(100.0, 1e-9, 0.1)}, arithmetic), "ASSET0", 1) ==
+          Catch::Approx(100.1));
+
+    const sim::SimulationConfig factor_config =
+        config_of({asset(100.0, 1e-9, 0.1, 0.0, factor_data(0.0, 1e-9))},
+                  sim::FactorModelSpec{.factor_count = 1, .dynamics = Dynamics::Arithmetic});
+    CHECK(price_after(factor_config, "ASSET0", 1) == Catch::Approx(100.1));
+}
+
+TEST_CASE("The dynamics reaches the factor model too, and the variance counts beta and idio",
+          "[simulation][world][dynamics]") {
+    // With mu = 0 the geometric price keeps E[p] = p0, which only holds if the
+    // Ito term is (beta^2 + idio^2) / 2 = 0.05. Left out, the mean would be 105.
+    // The standard error over 1000 seeds is about 1.
+    math::Vector beta(1);
+    beta << 0.3;
+    const sim::SimulationConfig config =
+        config_of({asset(100.0,
+                         0.2,
+                         0.0,
+                         0.0,
+                         sim::FactorModelAssetData{.beta = beta, .idiosyncratic_volatility = 0.1})},
+                  sim::FactorModelSpec{.factor_count = 1});
+    double sum = 0.0;
+    constexpr int runs = 1000;
+    for (int seed = 0; seed < runs; ++seed) {
+        sim::SimulationConfig seeded = config;
+        seeded.master_seed = math::rng::Seed{static_cast<std::uint64_t>(seed)};
+        sum += price_after(seeded, "ASSET0", 1);
+    }
+    CHECK(sum / runs == Catch::Approx(100.0).margin(3.0));
+}
+
+TEST_CASE("Geometric prices never reach zero, however volatile", "[simulation][world][dynamics]") {
+    sim::World world(config_of({asset(1.0, 2.0), asset(5.0, 1.5)}, sim::RandomWalkSpec{}));
+
+    for (int tick = 0; tick < 300; ++tick) {
+        world.price_process().advance(1.0);
+        CHECK(world.price_process().prices().minCoeff() >= 0.0);
+    }
+}
+
+TEST_CASE("A geometric World rejects an initial mid that is not positive",
+          "[simulation][world][dynamics]") {
+    CHECK_THROWS_AS(sim::World(config_of({asset(0.0, 0.2)}, sim::RandomWalkSpec{})),
+                    std::invalid_argument);
+    CHECK_THROWS_AS(sim::World(config_of({asset(-5.0, 0.2)}, sim::RandomWalkSpec{})),
+                    std::invalid_argument);
+
+    const sim::SimulationConfig factor_config =
+        config_of({asset(0.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1))},
+                  sim::FactorModelSpec{.factor_count = 1});
+    CHECK_THROWS_AS(sim::World(factor_config), std::invalid_argument);
 }

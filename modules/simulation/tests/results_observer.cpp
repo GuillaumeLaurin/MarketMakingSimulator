@@ -22,6 +22,7 @@
 #include <mm/strategy_config.hpp>
 #include <mm/types.hpp>
 
+#include <math/process/dynamics.hpp>
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
 #include <simulation/results_observer.hpp>
@@ -292,7 +293,7 @@ sim::SimulationConfig two_asset_config() {
     return sim::SimulationConfig{
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(2, 2),
-        .process = sim::RandomWalkSpec{},
+        .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
         .strategy =
             mm::StrategyConfig{
                 .gamma = 2.0,

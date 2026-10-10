@@ -47,10 +47,13 @@ struct AssetSpec {
     /// The true price process's own volatility, feeding World's
     /// CovarianceMatrix::from_correlation alongside every other asset's.
     /// Distinct from mm's per-asset volatility ESTIMATE, which only ever
-    /// observes mids after the fact.
+    /// observes mids after the fact. In price units under Dynamics::Arithmetic,
+    /// relative (a fraction of the price) under Dynamics::Geometric.
     double price_volatility;
 
-    /// Drift of the true price, per unit of simulation time.
+    /// Drift of the true price, per unit of simulation time. In price units
+    /// under Dynamics::Arithmetic; under Dynamics::Geometric the expected
+    /// return rate, so E[price(t)] = initial_mid * exp(mu * t).
     double mu = 0.0;
 
     /// Present only when the simulation uses FactorModelSpec; ignored
