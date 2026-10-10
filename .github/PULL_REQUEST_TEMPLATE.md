@@ -31,6 +31,7 @@ Commands run, presets used, results.
 - [ ] New or changed behavior is covered by a Catch2 test that fails without this change
 - [ ] Follows `CODING_STYLE.md`
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` if user-facing
+- [ ] `docs/architecture` updated if a design choice was made or changed
 - [ ] Breaking changes are called out below
 
 ## Breaking changes

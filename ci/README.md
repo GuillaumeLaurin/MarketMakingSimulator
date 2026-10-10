@@ -25,5 +25,33 @@ ci/sanitize.sh asan
 ci/coverage.sh
 ```
 
-Presets live in `CMakePresets.json`: `dev`, `release`, `asan`, `coverage`
-(+ `dev-mingw` / `release-mingw` for a local MSYS2/MinGW toolchain).
+Presets live in `CMakePresets.json`: `dev`, `release`, `bench`, `asan`, `coverage`
+(+ `dev-mingw`, `release-mingw` and `bench-mingw` for a local MSYS2/MinGW toolchain).
+`dev` builds the benchmarks but only `bench` is meant for running them: Debug timings
+mean nothing.
+
+## What the workflow runs
+
+| Job | What it does |
+|---|---|
+| guard | checks there is any C++ under `modules/` or `src/`, so a bare checkout runs nothing |
+| build | `build.sh dev` on Linux GCC, Linux Clang and Windows MSVC |
+| lint | `check-format.sh` (on shard 0 only) and `check-tidy.sh`, split over four runners with `MMS_TIDY_SHARD` |
+| sanitizers | `sanitize.sh asan` |
+| coverage | `coverage.sh`, report uploaded as an artifact |
+| docs | the Doxygen `docs` target, uploaded as an artifact |
+
+On a pull request the lint job only analyses what changed (`MMS_TIDY_BASE`). It analyses
+everything when `.clang-tidy`, a CMake file, `CMakePresets.json`, `vcpkg.json`,
+`check-tidy.sh` or `ci.yml` changes, and on a push to `main`.
+
+Benchmarks are compiled by the build job and never run in CI.
+
+## The vcpkg cache
+
+Every job restores the vcpkg binary cache at the start and saves it at the end, even when
+the build fails. The key ends with the run id, so each run can save a new cache, and the
+restore falls back to older keys by prefix. A key that only depended on `vcpkg.json` would
+stay a hit for ever and go stale when the runner image changes its compiler. The lint job
+saves from shard 0 only. The reasoning is in
+[build and CI](../docs/architecture/build-and-ci.md).
