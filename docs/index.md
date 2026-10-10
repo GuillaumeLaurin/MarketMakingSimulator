@@ -1,35 +1,49 @@
 # Market Making Simulator {#mainpage}
 
-A simplified but realistic simulation of a **market maker**: an agent that
-provides liquidity by continuously quoting bid and ask prices, manages inventory
-risk, and is subject to latency between decision and execution.
+A simulator of a market maker: an agent that keeps a buy price and a sell price in the
+market, earns the spread between them, and has to survive the inventory it collects.
+Prices move on their own, other participants trade against the quotes, and messages take
+time to arrive.
+
+This is the API reference. For why the code is shaped the way it is, read the
+[architecture pages](https://github.com/GuillaumeLaurin/MMS/blob/main/docs/architecture/README.md).
+They have diagrams, and those render on GitHub but not here.
 
 ## Library layout
 
 | Target | Responsibility |
 |---|---|
-| `MMS::math` | stochastic price processes, RNG, numeric helpers |
-| `MMS::core` | order book, matching engine, latency model, order/trade types |
-| `MMS::mms` | market-making domain logic: quoting, inventory and risk, P&L |
-| `MMS::simulation` | the engine: tick loop, configuration, adverse order flow, observer interface. Context-free (no I/O, no CLI, no UI) |
-| application (`src/`) | the headless CLI frontend: argument parsing, config and result formats, console output |
+| `MMS::math` | random numbers, distributions, price processes, covariance, statistics, the Avellaneda-Stoikov formulas |
+| `MMS::core` | order book, matching engine, latency queue, order and trade types |
+| `MMS::mm` | market-making logic: quoting, inventory and risk, positions and P&L |
+| `MMS::simulation` | the engine: world, tick loop, adverse flow, latency, observers, results, runner. No I/O, no CLI, no UI |
+| `MMS::logging` | leveled logging with pluggable sinks |
+| `MMS::diagnostics` | exceptions that capture a stack trace where they are thrown |
+| application (`src/`) | the command line frontend. Not written yet |
 
-Dependency direction is strictly one way:
-`app` then `MMS::simulation` then `MMS::mms` then `{ MMS::core, MMS::math }`.
+Dependencies only point down:
+`app` then `MMS::simulation` then `MMS::mm` then `{ MMS::core, MMS::math }`.
+`MMS::logging` and `MMS::diagnostics` stand alone, and the engine uses neither of them yet.
 
 ## Navigating this reference
 
-Use the **Namespaces** and **Classes** tabs above. Each module lives in its own
-namespace (`mms::core`, `mms::math`, `mms::mms`, `mms::simulation`) and its
-public API is the set of types tagged with that module's export macro.
+Use the **Namespaces** and **Classes** tabs above. Each module lives in its own namespace
+(`mms::core`, `mms::math`, `mms::mm`, `mms::simulation`, `mms::logging`,
+`mms::diagnostics`) and its public API is the set of types tagged with that module's
+export macro.
 
-The full API tree fills in as the modules gain source files; on a bare checkout
-this reference contains only the project overview and the coding style.
+## Where to start reading
+
+* `simulation/simulation_runner.hpp`: build a run from a `SimulationConfig` and step it.
+* `simulation/simulation_config.hpp`: everything a run needs.
+* `simulation/world.hpp` and `simulation/tick_loop.hpp`: what a run holds and the order of
+  events inside a tick.
+* `mm/quoting_strategy.hpp`: the interface a strategy implements.
 
 ## Conventions
 
-See `CODING_STYLE.md` at the repository root for naming, header layout, symbol
-visibility and the module-boundary rules.
+See `CODING_STYLE.md` at the repository root for naming, header layout, symbol visibility
+and the module-boundary rules.
 
 ## References
 

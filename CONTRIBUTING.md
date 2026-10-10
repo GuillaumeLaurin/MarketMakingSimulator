@@ -95,8 +95,8 @@ bash ci/check-format.sh          # must pass; CI fails on any diff
 bash ci/check-tidy.sh dev        # advisory for now
 ```
 
-- Respect the dependency direction: `app` then `MMS::simulation` then `MMS::mms`
-  then `{ MMS::core, MMS::math }`. `MMS::mms` and `MMS::simulation` must not
+- Respect the dependency direction: `app` then `MMS::simulation` then `MMS::mm`
+  then `{ MMS::core, MMS::math }`. `MMS::mm` and `MMS::simulation` must not
   include any CLI, file-I/O or UI header.
 - Third-party libraries are used only through the imported targets declared in
   `cmake/Modules/MmsDependencies.cmake`, after adding them to `vcpkg.json`.
@@ -107,7 +107,8 @@ bash ci/check-tidy.sh dev        # advisory for now
 - Put one test file per unit under `modules/<name>/tests/`. The directory is
   glob-picked, no CMake edit is required.
 - Any bug fix comes with a test that fails without the fix.
-- Benchmarks (nanobench) go under `modules/<name>/bench/`, same mechanism.
+- Benchmarks (nanobench) go under `modules/<name>/bench/`, same mechanism. Build the
+  `bench` preset to run them; Debug numbers are meaningless.
 
 ## 7. Pull requests
 
@@ -118,6 +119,9 @@ bash ci/check-tidy.sh dev        # advisory for now
   - `bash ci/build.sh dev`
 - Fill in the PR template: what changed, why, the linked issue, how you tested.
 - Update `CHANGELOG.md` under `[Unreleased]` for any user-facing change.
+- If the change settles a design question, or reverses an earlier choice, write it down in
+  [`docs/architecture`](docs/architecture/README.md): the page for that area says what was
+  chosen and why, and a planned feature has its own page under `future/`.
 - All CI jobs must be green.
 - Address review feedback with follow-up commits. The branch is squashed on
   merge, so the PR title becomes the commit subject: keep it in the
