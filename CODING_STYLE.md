@@ -105,12 +105,12 @@ Templates, `inline` functions and purely header-side code are not tagged.
 Dependency direction, strictly one way:
 
 ```
-app  ->  MMS::simulation  ->  MMS::mms  ->  { MMS::core, MMS::math }
+app  ->  MMS::simulation  ->  MMS::mm  ->  { MMS::core, MMS::math }
 ```
 
 * A module may only use another module listed in its `PUBLIC_DEPENDS` /
   `PRIVATE_DEPENDS`.
-* `MMS::mms` and `MMS::simulation` must not include any CLI, file-I/O or UI
+* `MMS::mm` and `MMS::simulation` must not include any CLI, file-I/O or UI
   header. That code belongs to the application layer (`src/`).
 * Third-party libraries are used only through the imported targets declared in
   `cmake/Modules/MmsDependencies.cmake`.

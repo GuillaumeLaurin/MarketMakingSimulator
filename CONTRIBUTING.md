@@ -95,8 +95,8 @@ bash ci/check-format.sh          # must pass; CI fails on any diff
 bash ci/check-tidy.sh dev        # advisory for now
 ```
 
-- Respect the dependency direction: `app` then `MMS::simulation` then `MMS::mms`
-  then `{ MMS::core, MMS::math }`. `MMS::mms` and `MMS::simulation` must not
+- Respect the dependency direction: `app` then `MMS::simulation` then `MMS::mm`
+  then `{ MMS::core, MMS::math }`. `MMS::mm` and `MMS::simulation` must not
   include any CLI, file-I/O or UI header.
 - Third-party libraries are used only through the imported targets declared in
   `cmake/Modules/MmsDependencies.cmake`, after adding them to `vcpkg.json`.
