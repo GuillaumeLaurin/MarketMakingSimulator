@@ -94,35 +94,49 @@ public:
     /// Sums the quantity resting at prices satisfying `accepts`, walking from
     /// the lowest price outward, stopping at the first price that fails (the
     /// map is price-ascending, so once one fails, every higher price does too).
-    /// Non-mutating - used to check Fill-Or-Kill feasibility before committing
-    /// any fills.
-    template<class Predicate>
-    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts) const {
+    /// Entries for which `excluded(id)` is true are not counted. Non-mutating -
+    /// used to check Fill-Or-Kill feasibility before committing any fills.
+    template<class Predicate, class Excluded>
+    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts, Excluded excluded) const {
         Quantity total{};
         for (const auto& [price, level] : levels_) {
             if (!accepts(price)) {
                 break;
             }
             for (const auto& entry : level) {
-                total = total + entry.order.quantity;
+                if (!excluded(entry.id)) {
+                    total = total + entry.order.quantity;
+                }
             }
         }
         return total;
     }
 
-    /// Same, walking from the highest price outward instead
     template<class Predicate>
-    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts) const {
+    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts) const {
+        return total_matchable_ascending(accepts, [](OrderId) { return false; });
+    }
+
+    /// Same, walking from the highest price outward instead
+    template<class Predicate, class Excluded>
+    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts, Excluded excluded) const {
         Quantity total{};
         for (auto it = levels_.rbegin(); it != levels_.rend(); ++it) {
             if (!accepts(it->first)) {
                 break;
             }
             for (const auto& entry : it->second) {
-                total = total + entry.order.quantity;
+                if (!excluded(entry.id)) {
+                    total = total + entry.order.quantity;
+                }
             }
         }
         return total;
+    }
+
+    template<class Predicate>
+    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts) const {
+        return total_matchable_descending(accepts, [](OrderId) { return false; });
     }
 
     [[nodiscard]] bool empty() const noexcept { return levels_.empty(); }
@@ -197,11 +211,18 @@ public:
 
     /// Total resting quantity on `side` matchable under `accepts` (a
     /// predicate on price), without mutating anything - used by MatchingEngine
-    /// to check Fill-Or-Kill feasibility up front.
+    /// to check Fill-Or-Kill feasibility up front. `excluded(id)` leaves an
+    /// order out of the count: the orders that self-trade prevention would
+    /// cancel instead of trading with.
+    template<class Predicate, class Excluded>
+    [[nodiscard]] Quantity total_matchable(Side side, Predicate accepts, Excluded excluded) const {
+        return side == Side::Buy ? levels_for(side).total_matchable_descending(accepts, excluded)
+                                 : levels_for(side).total_matchable_ascending(accepts, excluded);
+    }
+
     template<class Predicate>
     [[nodiscard]] Quantity total_matchable(Side side, Predicate accepts) const {
-        return side == Side::Buy ? levels_for(side).total_matchable_descending(accepts)
-                                 : levels_for(side).total_matchable_ascending(accepts);
+        return total_matchable(side, accepts, [](OrderId) { return false; });
     }
 
     [[nodiscard]] bool empty(Side side) const noexcept { return levels_for(side).empty(); }

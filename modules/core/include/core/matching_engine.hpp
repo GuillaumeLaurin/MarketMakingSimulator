@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -39,6 +40,8 @@ crosses(Side incoming_side, const Price& incoming_price, const Price& resting_pr
 template<OrderedArithmetic Price, OrderedArithmetic Quantity> struct MatchResult {
     std::vector<Trade<Price, Quantity>> trades;
     Quantity remaining;
+    /// Resting orders cancelled by self-trade prevention, in the order they were met.
+    std::vector<OrderId> self_cancelled{};
 };
 
 /// Walks the side opposite aggressor_side on `book`, from its best price
@@ -48,12 +51,18 @@ template<OrderedArithmetic Price, OrderedArithmetic Quantity> struct MatchResult
 /// fully filled). Does NOT notify anything - reporting the trades is the
 /// caller's job, which is exactly what keeps this function testable with
 /// nothing more than an OrderBook.
-template<OrderedArithmetic Price, OrderedArithmetic Quantity, class Predicate>
+///
+/// A resting order for which `is_own(id)` holds is cancelled when the walk
+/// reaches it, instead of being traded with (self-trade prevention, the oldest
+/// order is the one to go): it is removed from `book`, listed in
+/// `self_cancelled`, and the walk goes on to whatever is behind it.
+template<OrderedArithmetic Price, OrderedArithmetic Quantity, class Predicate, class IsOwn>
 [[nodiscard]] MatchResult<Price, Quantity> match_against_book(OrderBook<Price, Quantity>& book,
                                                               OrderId aggressor_id,
                                                               Side aggressor_side,
                                                               Quantity remaining,
-                                                              Predicate accepts) {
+                                                              Predicate accepts,
+                                                              IsOwn is_own) {
     MatchResult<Price, Quantity> result{{}, remaining};
     const Side resting_side = (aggressor_side == Side::Buy) ? Side::Sell : Side::Buy;
 
@@ -61,6 +70,11 @@ template<OrderedArithmetic Price, OrderedArithmetic Quantity, class Predicate>
         const auto top = book.best(resting_side);
         if (!accepts(top->order.price)) {
             break;
+        }
+        if (is_own(top->id)) {
+            static_cast<void>(book.cancel(top->id));
+            result.self_cancelled.push_back(top->id);
+            continue;
         }
 
         const Quantity traded =
@@ -84,6 +98,17 @@ template<OrderedArithmetic Price, OrderedArithmetic Quantity, class Predicate>
         result.remaining = result.remaining - traded;
     }
     return result;
+}
+
+/// Without self-trade prevention: every resting order is traded with.
+template<OrderedArithmetic Price, OrderedArithmetic Quantity, class Predicate>
+[[nodiscard]] MatchResult<Price, Quantity> match_against_book(OrderBook<Price, Quantity>& book,
+                                                              OrderId aggressor_id,
+                                                              Side aggressor_side,
+                                                              Quantity remaining,
+                                                              Predicate accepts) {
+    return match_against_book(
+        book, aggressor_id, aggressor_side, remaining, accepts, [](OrderId) { return false; });
 }
 
 /// Multiple virtual methods with no-op defaults, not a single on_event
@@ -125,9 +150,29 @@ public:
         observers_.push_back(observer);
     }
 
+    /// Turns on self-trade prevention. `is_own_resting(id)` must say whether the
+    /// resting order `id` belongs to whoever is submitting right now; it is called
+    /// only from inside submit(). An order that would trade with one of its
+    /// submitter's own resting orders cancels that resting order instead (the oldest
+    /// is the one to go), reports it through on_order_cancelled, and carries on
+    /// matching what is behind it. Own orders never count towards a Fill-Or-Kill.
+    /// Such cancellations are reported before the trades of the same submission.
+    /// An empty function turns it off, which is the default.
+    void set_self_trade_prevention(std::function<bool(OrderId)> is_own_resting) {
+        is_own_ = std::move(is_own_resting);
+    }
+
     [[nodiscard]] const OrderBook<Price, Quantity>& book() const noexcept { return book_; }
 
 private:
+    [[nodiscard]] bool resting_is_own(OrderId id) const { return is_own_ && is_own_(id); }
+
+    void notify_self_cancelled(const std::vector<OrderId>& ids) {
+        for (const OrderId id : ids) {
+            notify_order_cancelled(id);
+        }
+    }
+
     [[nodiscard]] static Side opposite(Side side) noexcept {
         return side == Side::Buy ? Side::Sell : Side::Buy;
     }
@@ -158,12 +203,15 @@ private:
             return crosses(side, price, resting_price);
         };
 
+        const auto is_own = [this](OrderId resting) { return resting_is_own(resting); };
+
         if (order.time_in_force == TimeInForce::FOK &&
-            book_.total_matchable(opposite(order.side), accepts) < order.quantity) {
+            book_.total_matchable(opposite(order.side), accepts, is_own) < order.quantity) {
             return id; // rejected: not fully fillable now, zero fills, nothing rests
         }
 
-        auto result = match_against_book(book_, id, order.side, order.quantity, accepts);
+        auto result = match_against_book(book_, id, order.side, order.quantity, accepts, is_own);
+        notify_self_cancelled(result.self_cancelled);
         notify_trades(result.trades);
 
         if (result.remaining > Quantity{} && order.time_in_force == TimeInForce::GTC) {
@@ -182,12 +230,15 @@ private:
         const OrderId id = next_order_id();
         const auto accepts = [](const Price&) { return true; }; // no price limit
 
+        const auto is_own = [this](OrderId resting) { return resting_is_own(resting); };
+
         if (order.time_in_force == MarketTimeInForce::FOK &&
-            book_.total_matchable(opposite(order.side), accepts) < order.quantity) {
+            book_.total_matchable(opposite(order.side), accepts, is_own) < order.quantity) {
             return id; // rejected
         }
 
-        auto result = match_against_book(book_, id, order.side, order.quantity, accepts);
+        auto result = match_against_book(book_, id, order.side, order.quantity, accepts, is_own);
+        notify_self_cancelled(result.self_cancelled);
         notify_trades(result.trades);
         return id; // Market never rests, any remainder is discarded
     }
@@ -196,6 +247,7 @@ private:
 
     OrderBook<Price, Quantity> book_;
     std::vector<std::reference_wrapper<MatchingEngineObserver<Price, Quantity>>> observers_;
+    std::function<bool(OrderId)> is_own_;
     std::uint64_t next_id_ = 1;
 };
 
