@@ -6,65 +6,57 @@
 [![CMake >= 3.25][cmake-badge]][cmake]
 [![vcpkg][vcpkg-badge]][vcpkg]
 
-A simplified but realistic simulation of a **market maker**: an agent that
-provides liquidity by continuously quoting bid and ask prices, manages inventory
-risk, and is exposed to latency between decision and execution.
+A simulator of a market maker: an agent that keeps a buy price and a sell price in the
+market, tries to earn the spread between them, and has to survive the inventory it
+collects along the way. Prices move on their own, other participants trade against the
+quotes, and messages take time to arrive.
 
-## Context and motivation
+I am building it to understand three things end to end: how an order book matches, how
+inventory risk shapes quoting, and what latency costs a strategy. It is also practice at
+designing C++ data structures where speed counts. It is not a high-frequency trading
+system.
 
-This project aims to simulate, in a simplified but realistic environment, the behavior of a **market maker**. A market participant who provides liquidity by continuously quoting buy (bid) and sell (ask) prices on an asset.
+## Where it stands
 
-The goal is not to reproduce a production-grade high-frequency trading system, but to understand and implement, end to end:
+The engine works and is tested. There is no application yet: `src/app` is empty, so today
+you use it as a library from C++.
 
-- the internal mechanics of an order book,
-- the basic principles of inventory risk management,
-- the concrete impact of **latency** on the profitability of a quoting strategy.
+What a run does now:
 
-This project also serves as a training ground for designing efficient data structures in C++, in a context where performance (execution time, algorithmic complexity) genuinely matters.
+- Moves the true prices of a basket of correlated assets, with a random walk or a factor
+  model, arithmetic or geometric.
+- Runs one order book and matching engine per asset.
+- Quotes with an Avellaneda-Stoikov strategy over the whole portfolio, with risk limits.
+- Sends random adverse market orders at the quotes, with configurable latency on every
+  message.
+- Keeps a P&L ledger and reports its statistics, drawdown and trade counts.
+- Replays exactly from a seed.
 
----
+What it is turning into: a sandbox where bots with different habits trade together, a
+person can take a seat as a trader or a market maker, assets can be listed while it runs,
+and the whole thing can be saved and resumed. None of that is built. It is written up in
+[`docs/architecture/future`](docs/architecture/future/).
 
-## Learning objectives
+## Architecture
 
-- Understand how an order book works and how order matching is performed.
-- Model a market price using a stochastic process (random walk).
-- Implement quoting logic with inventory risk management (inspired by academic models such as Avellaneda-Stoikov).
-- Work with and compare different C++ data structures (`std::map`, `std::unordered_map`, `std::deque`, etc.) based on their algorithmic complexity.
-- Measure and analyze a simulated P&L, as well as the effect of latency on strategy performance.
+The code is split into modules, with dependencies only pointing down. The pages in
+[`docs/architecture`](docs/architecture/README.md) explain what was chosen and why, with
+diagrams.
 
----
-
-## Planned features
-
-- Reference price generator following a random walk (with configurable volatility)
-- Simplified order book (add, cancel, execute limit orders)
-- Matching engine (FIFO within a given price level)
-- Market maker agent with bid/ask quoting logic
-- Inventory risk management (quote skew based on position)
-- Simulated adverse order flow (market noise)
-- Configurable latency between decision and execution
-- P&L calculation (realized and mark-to-market)
-- Export of results for analysis (CSV / charts)
-
----
-
-## Evaluation metrics
-
-- Final P&L and its evolution over time
-- Average / maximum inventory held
-- Number of fills and quote fill rate
-- Impact of latency on P&L (comparison across several delay scenarios)
-- Sensitivity to parameters (price volatility, spread width, skew aggressiveness)
-
----
-
-## Known model limitations
-
-- The reference price follows a simple random walk, which does not reproduce real market microstructure (no informed order flow, no volatility clustering, etc.).
-- The order book is intentionally simplified (no multi-asset support, no complex order types such as iceberg or stop orders).
-- Latency is modeled in a simplified way (fixed delay or basic distribution), without reproducing real network intricacies.
-
----
+| Page | Covers |
+|---|---|
+| [Overview](docs/architecture/overview.md) | Modules, the dependency rule, shared libraries |
+| [Randomness](docs/architecture/randomness.md) | Counter-based streams, keys by symbol |
+| [Price processes](docs/architecture/price-processes.md) | Random walk, factor model, arithmetic and geometric |
+| [Order book and matching](docs/architecture/order-book-and-matching.md) | The book, the engine, the latency queue |
+| [Market making](docs/architecture/market-making.md) | Quoting, risk, requoting, P&L |
+| [The simulation loop](docs/architecture/simulation-loop.md) | What happens in a tick |
+| [Observers and results](docs/architecture/observers-and-results.md) | How a run reports |
+| [Logging and diagnostics](docs/architecture/logging-and-diagnostics.md) | Levels, sinks, traced exceptions |
+| [Build and CI](docs/architecture/build-and-ci.md) | Presets, the pipeline |
+| [Performance](docs/architecture/performance.md) | The time budget, the benchmarks |
+| [Known limits](docs/architecture/limitations.md) | What the model gets wrong |
+| [Planned](docs/architecture/future/) | Agents, real time, save and resume, dynamic assets, sweeps |
 
 ## Getting started
 
@@ -74,14 +66,14 @@ This project also serves as a training ground for designing efficient data struc
 |---|---|---|
 | CMake | >= 3.25 | presets version 6 |
 | Ninja | any recent | default generator for every preset |
-| C++ compiler | MSVC >= 19.30 (VS 2022), GCC >= 11, or Clang >= 14 | full C++20 support |
-| vcpkg | any recent | set `VCPKG_ROOT`; dependencies come from `vcpkg.json` in manifest mode |
+| C++ compiler | MSVC >= 19.30 (VS 2022), GCC >= 11, or Clang >= 14 | full C++20 |
+| vcpkg | any recent | set `VCPKG_ROOT`; dependencies come from `vcpkg.json` |
 | Doxygen + Graphviz | optional | only for the `docs` target |
 | clang-format, clang-tidy | optional | only for the local checks |
 
 ### Configure, build, test
 
-Dependencies are installed automatically by vcpkg the first time you configure.
+vcpkg installs the dependencies the first time you configure.
 
 ```bash
 cmake --preset dev
@@ -89,41 +81,29 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-On Windows with an MSYS2 / MinGW-w64 UCRT64 toolchain, use the `*-mingw`
-presets instead (`dev-mingw`, `release-mingw`).
+On Windows with an MSYS2 UCRT64 toolchain, use the `*-mingw` presets instead.
 
 | Preset | Build type | Contents |
 |---|---|---|
-| `dev` / `dev-mingw` | Debug | modules, app, tests, benchmarks, warnings as errors |
-| `release` / `release-mingw` | Release | optimized, LTO, no tests |
-| `asan` | Debug | AddressSanitizer + UndefinedBehaviorSanitizer |
-| `coverage` | Debug | `--coverage` instrumentation for `gcovr` |
+| `dev` / `dev-mingw` | Debug | modules, tests, benchmarks (built, not run), warnings as errors |
+| `release` / `release-mingw` | Release | optimised, LTO, no tests |
+| `bench` / `bench-mingw` | Release | benchmarks only, for measuring |
+| `asan` | Debug | AddressSanitizer and UBSan |
+| `coverage` | Debug | `--coverage` for `gcovr` |
 
-### Build the application only
+### One module
 
-The executable target is `mms_app` (binary name `mms`).
-
-```bash
-cmake --preset dev
-cmake --build --preset dev --target mms_app
-./build/dev/out/bin/mms          # mms.exe on Windows
-```
-
-### Build a single library module
-
-Every module is the target `mms_<name>` with the alias `MMS::<name>`
-(`core`, `math`, `mms`, `simulation`).
+Every module is the target `mms_<name>` with the alias `MMS::<name>`: `core`, `math`,
+`mm`, `simulation`, `logging`, `diagnostics`.
 
 ```bash
-cmake --preset dev
-cmake --build --preset dev --target mms_core       # just the order book / matching library
+cmake --build --preset dev --target mms_core
 ```
 
-To skip the parts you do not need, turn options off at configure time:
+Options can be turned off at configure time:
 
 ```bash
 cmake --preset dev -DMMS_BUILD_APP=OFF -DMMS_BUILD_TESTS=OFF -DMMS_BUILD_BENCHMARKS=OFF
-cmake --build --preset dev --target mms_math
 ```
 
 ### Tests and benchmarks
@@ -133,9 +113,24 @@ ctest --preset dev                 # all unit tests (Catch2)
 ctest --preset dev -R <regex>      # a subset
 ```
 
-Unit tests live in `modules/<name>/tests/`, benchmarks in `modules/<name>/bench/`
-(nanobench). Both directories are picked up automatically; dropping a `*.cpp`
-there is enough, no CMake edit required.
+Tests live in `modules/<name>/tests/` and benchmarks in `modules/<name>/bench/`. Drop a
+`*.cpp` in either and it is picked up on the next configure, with no CMake edit.
+
+Benchmarks only mean something in Release:
+
+```bash
+cmake --preset bench
+cmake --build --preset bench
+build/bench/out/bench/simulation_runner_ticks
+```
+
+See [performance](docs/architecture/performance.md) for what each one measures and for
+the MinGW `PATH` caveat.
+
+### The application
+
+The executable target is `mms_app` (binary `mms`), but `src/app` has no sources, so it
+builds a placeholder that does nothing.
 
 ### Install and consume as a package
 
@@ -148,43 +143,21 @@ find_package(MMS 0.1 REQUIRED)
 target_link_libraries(your_app PRIVATE MMS::simulation)
 ```
 
----
-
 ## Development
 
-Configuration files live at the repository root: `.clang-format`, `.clang-tidy`,
-`CMakePresets.json`, `vcpkg.json`. The wrapper scripts in `ci/` run the exact
-same commands as continuous integration.
-
-### Formatting (clang-format)
+The config files are at the root: `.clang-format`, `.clang-tidy`, `CMakePresets.json`,
+`vcpkg.json`. The scripts in `ci/` run the same commands as CI.
 
 ```bash
-bash ci/check-format.sh                       # report only, fails on any diff (used by CI)
-clang-format -i $(git ls-files '*.hpp' '*.cpp' '*.hxx' '*.cxx')   # apply in place
-```
-
-### Static analysis (clang-tidy)
-
-`clang-tidy` needs a configured build for its compile database.
-
-```bash
-bash ci/check-tidy.sh dev
-# or directly:
-cmake --preset dev
-clang-tidy -p build/dev $(git ls-files 'modules/**/*.cpp' 'src/**/*.cpp')
-```
-
-It is advisory for now (no check is promoted to an error); see the note at the
-top of `.clang-tidy`.
-
-### Sanitizers and coverage
-
-```bash
-bash ci/sanitize.sh asan          # build + test under ASan/UBSan
+bash ci/check-format.sh           # fails on any difference
+clang-format -i $(git ls-files '*.hpp' '*.cpp')   # fix in place
+bash ci/check-tidy.sh dev         # clang-tidy, tests and benchmarks skipped
+bash ci/sanitize.sh asan          # build and test under ASan and UBSan
 bash ci/coverage.sh               # writes build/coverage/coverage.xml
 ```
 
-### Documentation (Doxygen)
+`clang-tidy` is advisory for now: nothing is promoted to an error (see the top of
+`.clang-tidy`). The API reference is built with Doxygen:
 
 ```bash
 cmake --preset dev -DMMS_BUILD_DOCS=ON
@@ -192,70 +165,26 @@ cmake --build --preset dev --target docs
 # open build/dev/docs/html/index.html
 ```
 
-### VS Code
-
-```powershell
-.\.vscode\setup_intellisense.ps1            # default preset: dev-mingw
-.\.vscode\setup_intellisense.ps1 -Preset dev
-```
-
-Generates the local (git-ignored) `c_cpp_properties.json`, `settings.json`,
-`tasks.json` and `launch.json` from the chosen preset. Only
-`.vscode/extensions.json` and `.vscode/setup_intellisense.ps1` are tracked.
-
----
+For VS Code, `.vscode/setup_intellisense.ps1` generates the local settings from a preset
+(default `dev-mingw`). Only that script and `extensions.json` are tracked.
 
 ## Contributing
 
-Contributions are welcome. This is a learning project, so clarity is valued over
-cleverness, and small focused changes are preferred.
+It is a learning project, so clarity wins over cleverness and small changes are easier to
+review. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the details. The short version: branch
+off `main`, write commit subjects as `type(scope): summary`, run `ci/check-format.sh` and
+`ci/build.sh dev` before opening a PR, and add a Catch2 test for new behaviour.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full guide. In short:
-
-- Fork, add an `upstream` remote, branch off `main` (`feat/`, `fix/`, `docs/`, ...).
-- Commit subjects follow Conventional Commits: `type(scope): imperative summary`.
-- Before opening a PR: `bash ci/check-format.sh` and `bash ci/build.sh dev` must
-  pass, new behavior comes with a Catch2 test, and CI must be green.
-- Issue and pull-request templates prompt for everything reviewers need.
-
----
-
-## Documentation
-
-- [`CODING_STYLE.md`](CODING_STYLE.md): naming, headers, API design, module
-  boundaries, error handling.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md): setup, issues, commits, pull requests.
-- [`CHANGELOG.md`](CHANGELOG.md): notable changes per release.
-- `docs/`: Doxygen sources (`index.md`, `Doxyfile.in`). Build the `docs` target
-  for the API reference.
-- [`ci/README.md`](ci/README.md): what each CI script does.
-
----
+Other documents: [`CODING_STYLE.md`](CODING_STYLE.md), [`CHANGELOG.md`](CHANGELOG.md),
+[`ci/README.md`](ci/README.md).
 
 ## License
 
-MIT License. See [`LICENSE`](LICENSE).
-
----
+MIT. See [`LICENSE`](LICENSE).
 
 ## References
 
 - Avellaneda, M., & Stoikov, S. (2008). *High-frequency trading in a limit order book*.
-- C++ standard documentation (cppreference.com) for the data structures used.
-
----
-
-## Progress
-
-| Module | Status |
-|---|---|
-| Reference price random walk | To do |
-| Order book data structures | To do |
-| Order book (add/cancel/matching) | To do |
-| Basic quoting logic | To do |
-| Inventory risk management | To do |
-| Latency simulation | To do |
-| P&L calculation and visualization | To do |
 
 <!-- Badge references -->
 [ci-badge]: https://github.com/GuillaumeLaurin/MMS/actions/workflows/ci.yml/badge.svg
