@@ -23,7 +23,7 @@ They have diagrams, and those render on GitHub but not here.
 
 Dependencies only point down:
 `app` then `MMS::simulation` then `MMS::mm` then `{ MMS::core, MMS::math }`.
-`MMS::diagnostics` depends on `MMS::logging`, and the engine uses neither of them yet.
+`MMS::logging` and `MMS::diagnostics` stand alone, and the engine uses neither of them yet.
 
 ## Navigating this reference
 

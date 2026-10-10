@@ -17,7 +17,8 @@ flowchart LR
     sim --> math
     mm --> core
     mm --> math
-    diagnostics --> logging
+    logging
+    diagnostics
 ```
 
 Read [overview](overview.md) first. After that, the pages follow the order in

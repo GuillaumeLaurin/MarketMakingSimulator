@@ -29,7 +29,8 @@ flowchart TB
         mm --> math
     end
     subgraph support
-        diagnostics --> logging
+        logging
+        diagnostics
     end
 ```
 
@@ -37,8 +38,9 @@ Dependencies only point down. `core` and `math` do not know each other, and neit
 knows `mm`. That is checked by the build: a header that reaches the wrong way does
 not compile, because the target is not linked.
 
-`logging` and `diagnostics` are standalone and nothing in the engine uses them yet.
-They exist so that the application, once written, has a place to report to.
+`logging` and `diagnostics` are standalone: they do not depend on each other or on the
+rest of the project, and nothing in the engine uses them yet. They exist so that the
+application, once written, has a place to report to.
 See [logging and diagnostics](logging-and-diagnostics.md).
 
 ## Why `simulation` has no I/O

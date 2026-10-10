@@ -66,9 +66,11 @@ types use it.
 
 ## Why these are separate from the engine
 
-`diagnostics` depends on `logging` and nothing else in the project. The engine depends on
-neither. Everything in `simulation` reports through return values, exceptions and
-observers, so a caller who wants no logging gets none and pays for none.
+Neither module depends on the other, and the engine depends on neither. `diagnostics`
+only ever produces a formatted string, and the catch site decides what to do with it,
+which can be handing it to a `Logger`. Everything in `simulation` reports through return
+values, exceptions and observers, so a caller who wants no logging gets none and pays for
+none.
 
 Adopting `Traced` in the engine's throw sites is open work. Until then the engine throws
 plain `std::` exceptions with a message that names the class that rejected the input.
