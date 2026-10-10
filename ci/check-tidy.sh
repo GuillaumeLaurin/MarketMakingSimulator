@@ -65,9 +65,11 @@ selected=$(select_sources)
 
 # Test translation units are 80% of the run time and most of the noise (every
 # Catch2 macro expands into code that is analysed too); their headers are still
-# checked through the sources. MMS_TIDY_INCLUDE_TESTS=1 brings them back.
+# checked through the sources. Benchmarks are left out for the same reason: they
+# are throwaway measuring code, not shipped. MMS_TIDY_INCLUDE_TESTS=1 brings
+# both back.
 if [ "${MMS_TIDY_INCLUDE_TESTS:-0}" != 1 ]; then
-    selected=$(printf '%s\n' "$selected" | grep -vE '^modules/[^/]+/tests/' || true)
+    selected=$(printf '%s\n' "$selected" | grep -vE '^modules/[^/]+/(tests|bench)/' || true)
 fi
 
 # MMS_TIDY_SHARD=<i>/<n>: keep every n-th file starting at i, so n CI jobs split
