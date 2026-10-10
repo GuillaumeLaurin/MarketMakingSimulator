@@ -43,6 +43,19 @@ void validate_idio_vol(const Vector& idio_vol) {
     }
 }
 
+void validate_prices(const Vector& initial_prices, Dynamics dynamics) {
+    if (dynamics != Dynamics::Geometric) {
+        return;
+    }
+    for (Index i = 0; i < initial_prices.size(); ++i) {
+        const double p = initial_prices(i);
+        if (!std::isfinite(p) || p <= 0.0) {
+            throw std::invalid_argument(
+                "FactorModel: geometric dynamics needs finite initial prices > 0");
+        }
+    }
+}
+
 } // namespace
 
 FactorModel::FactorModel(Vector initial_prices,
@@ -51,15 +64,20 @@ FactorModel::FactorModel(Vector initial_prices,
                          Matrix factor_chol,
                          Vector idio_vol,
                          std::vector<rng::RngEngine> engines,
-                         std::vector<rng::RngEngine> factor_engines) {
+                         std::vector<rng::RngEngine> factor_engines,
+                         Dynamics dynamics) {
     validate_size(initial_prices, mu, beta, factor_chol, idio_vol, engines, factor_engines);
     validate_idio_vol(idio_vol);
+    validate_prices(initial_prices, dynamics);
 
     initial_prices_ = std::move(initial_prices);
     mu_ = std::move(mu);
     beta_ = std::move(beta);
     factor_chol_ = std::move(factor_chol);
     idio_vol_ = std::move(idio_vol);
+    dynamics_ = dynamics;
+    const Matrix loading = beta_ * factor_chol_.triangularView<Eigen::Lower>();
+    variance_ = loading.rowwise().squaredNorm() + idio_vol_.cwiseAbs2();
     initial_engines_ = engines;
     engines_ = std::move(engines);
     initial_factor_engines_ = factor_engines;
@@ -75,7 +93,13 @@ void FactorModel::do_advance(double dt) {
     for (Index i = 0; i < n; ++i) {
         idio_z(i) = dist::standard_normal(engines_[static_cast<std::size_t>(i)]);
     }
-    prices_ += (mu_ * dt) + (beta_ * f) + (idio_vol_.cwiseProduct(idio_z) * std::sqrt(dt));
+    const Vector factor_term = beta_ * f;
+    const Vector idio_term = idio_vol_.cwiseProduct(idio_z) * std::sqrt(dt);
+    if (dynamics_ == Dynamics::Arithmetic) {
+        prices_ += (mu_ * dt) + factor_term + idio_term;
+        return;
+    }
+    prices_.array() *= (((mu_ - 0.5 * variance_) * dt) + factor_term + idio_term).array().exp();
 }
 
 void FactorModel::reset() {

@@ -2,15 +2,16 @@
 #define MMS_MATH_PROCESS_CORRELATED_RANDOM_WALK_HPP
 
 /// \file
-/// CorrelatedRandomWalk: the default PriceProcess. An arithmetic random walk
-/// across N correlated assets, driven by correlated_normal_increment. Owns
-/// its RNG engines by value (one per asset); reset() restores both prices and
-/// engine state to what they were at construction.
+/// CorrelatedRandomWalk: the default PriceProcess. A random walk (arithmetic
+/// or geometric, see Dynamics) across N correlated assets, driven by correlated_normal_increment.
+/// Owns its RNG engines by value (one per asset); reset() restores both prices and engine state to
+/// what they were at construction.
 
 #include <utility>
 #include <vector>
 
 #include <math/math_export.hpp>
+#include <math/process/dynamics.hpp>
 #include <math/process/price_process.hpp>
 #include <math/rng/engine.hpp>
 #include <math/types.hpp>
@@ -23,11 +24,13 @@ public:
     /// asset subset's covariance (e.g. CovarianceMatrix::factor(active) or
     /// ::cholesky()), never a raw Sigma. Throws std::invalid_argument unless
     /// mu.size() == chol.rows() == chol.cols() == engines.size() ==
-    /// initial_prices.size().
+    /// initial_prices.size(), and, for Dynamics::Geometric, every initial
+    /// price is finite and > 0.
     CorrelatedRandomWalk(Vector initial_prices,
                          Vector mu,
                          Matrix chol,
-                         std::vector<rng::RngEngine> engines);
+                         std::vector<rng::RngEngine> engines,
+                         Dynamics dynamics);
 
     [[nodiscard]] const Vector& prices() const noexcept override { return prices_; }
 
@@ -43,6 +46,8 @@ private:
     Vector initial_prices_;
     Vector mu_;
     Matrix chol_;
+    Dynamics dynamics_ = Dynamics::Arithmetic;
+    Vector variance_; // diag(L L^T), the Ito correction's input
     std::vector<rng::RngEngine> initial_engines_;
     std::vector<rng::RngEngine> engines_;
     Vector prices_;

@@ -53,7 +53,8 @@ public:
     /// dimension or `config.strategy`'s per-asset vectors; an asset without a
     /// symbol, or two assets with the same symbol; a
     /// FactorModelSpec process with an asset missing `factor_model`, or a
-    /// RandomWalkSpec process with one present; a correlation that is not
+    /// RandomWalkSpec process with one present; a Geometric process with an
+    /// initial_mid that is not finite and positive; a correlation that is not
     /// symmetric positive definite; anything the strategy's or the
     /// PriceProcess's own constructor rejects.
     explicit World(const SimulationConfig& config);

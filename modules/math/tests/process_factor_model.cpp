@@ -29,6 +29,7 @@ using mms::math::Index;
 using mms::math::Matrix;
 using mms::math::Vector;
 using mms::math::process::correlated_normal_increment;
+using mms::math::process::Dynamics;
 using mms::math::process::FactorModel;
 namespace rng = mms::math::rng;
 
@@ -82,7 +83,8 @@ TEST_CASE("FactorModel rejects inconsistent asset-count dimensions", "[process][
                                 s.factor_chol,
                                 s.idio_vol,
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument); // mu wrong size
 
     CHECK_THROWS_AS(FactorModel(s.prices,
@@ -91,7 +93,8 @@ TEST_CASE("FactorModel rejects inconsistent asset-count dimensions", "[process][
                                 s.factor_chol,
                                 s.idio_vol,
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument); // beta wrong row count
 
     CHECK_THROWS_AS(FactorModel(s.prices,
@@ -100,7 +103,8 @@ TEST_CASE("FactorModel rejects inconsistent asset-count dimensions", "[process][
                                 s.factor_chol,
                                 Vector(4),
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument); // idio_vol wrong size
 
     CHECK_THROWS_AS(FactorModel(s.prices,
@@ -109,7 +113,8 @@ TEST_CASE("FactorModel rejects inconsistent asset-count dimensions", "[process][
                                 s.factor_chol,
                                 s.idio_vol,
                                 engines_for(hub, rng::Subsystem::Price, 2),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument); // wrong number of asset engines
 }
 
@@ -123,7 +128,8 @@ TEST_CASE("FactorModel rejects inconsistent factor-count dimensions", "[process]
                                 Matrix(3, 3),
                                 s.idio_vol,
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument); // factor_chol wrong size
 
     CHECK_THROWS_AS(FactorModel(s.prices,
@@ -132,7 +138,8 @@ TEST_CASE("FactorModel rejects inconsistent factor-count dimensions", "[process]
                                 s.factor_chol,
                                 s.idio_vol,
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 3)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 3),
+                                Dynamics::Arithmetic),
                     std::invalid_argument); // wrong number of factor engines
 }
 
@@ -149,7 +156,8 @@ TEST_CASE("FactorModel rejects a non-finite or negative idio_vol entry",
                                 s.factor_chol,
                                 negative_idio,
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument);
 
     Vector nan_idio = s.idio_vol;
@@ -160,7 +168,8 @@ TEST_CASE("FactorModel rejects a non-finite or negative idio_vol entry",
                                 s.factor_chol,
                                 nan_idio,
                                 engines_for(hub, rng::Subsystem::Price, 3),
-                                engines_for(hub, rng::Subsystem::PriceFactor, 2)),
+                                engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                Dynamics::Arithmetic),
                     std::invalid_argument);
 
     // idio_vol == 0 for one asset is legitimate: fully factor-explained variance.
@@ -170,7 +179,8 @@ TEST_CASE("FactorModel rejects a non-finite or negative idio_vol entry",
                               s.factor_chol,
                               s.idio_vol,
                               engines_for(hub, rng::Subsystem::Price, 3),
-                              engines_for(hub, rng::Subsystem::PriceFactor, 2)));
+                              engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                              Dynamics::Arithmetic));
 }
 
 TEST_CASE("FactorModel exposes the initial prices and asset count before any advance",
@@ -184,7 +194,8 @@ TEST_CASE("FactorModel exposes the initial prices and asset count before any adv
                       s.factor_chol,
                       s.idio_vol,
                       engines_for(hub, rng::Subsystem::Price, 3),
-                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
 
     CHECK(model.asset_count() == 3);
     CHECK(max_abs_diff(model.prices(), s.prices) < 1e-15);
@@ -207,7 +218,8 @@ TEST_CASE("FactorModel::advance matches the two-draw decomposition over several 
                       s.factor_chol,
                       s.idio_vol,
                       std::move(engines),
-                      std::move(factor_engines)};
+                      std::move(factor_engines),
+                      Dynamics::Arithmetic};
 
     Vector expected = s.prices;
     for (int tick = 0; tick < 5; ++tick) {
@@ -234,7 +246,8 @@ TEST_CASE("FactorModel::reset restores prices and both engine groups", "[process
                       s.factor_chol,
                       s.idio_vol,
                       engines_for(hub, rng::Subsystem::Price, 3),
-                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
 
     model.advance(0.5);
     model.advance(0.5);
@@ -258,7 +271,8 @@ TEST_CASE("FactorModel::advance(0.0) leaves prices unchanged", "[process][factor
                       s.factor_chol,
                       s.idio_vol,
                       engines_for(hub, rng::Subsystem::Price, 3),
-                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
     model.advance(0.0);
 
     CHECK(max_abs_diff(model.prices(), s.prices) < 1e-15);
@@ -275,7 +289,8 @@ TEST_CASE("FactorModel::advance rejects a negative dt via the PriceProcess contr
                       s.factor_chol,
                       s.idio_vol,
                       engines_for(hub, rng::Subsystem::Price, 3),
-                      engines_for(hub, rng::Subsystem::PriceFactor, 2)};
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
 
     CHECK_THROWS_AS(model.advance(-1.0), std::invalid_argument);
     CHECK(max_abs_diff(model.prices(), s.prices) < 1e-15);
@@ -296,10 +311,116 @@ TEST_CASE("FactorModel with beta == 0 and factor_chol == 0 is pure deterministic
     std::vector<rng::RngEngine> engines = engines_for(hub, rng::Subsystem::Price, 2);
     std::vector<rng::RngEngine> factor_engines = engines_for(hub, rng::Subsystem::PriceFactor, 1);
 
-    FactorModel model{
-        prices, mu, beta, factor_chol, idio_vol, std::move(engines), std::move(factor_engines)};
+    FactorModel model{prices,
+                      mu,
+                      beta,
+                      factor_chol,
+                      idio_vol,
+                      std::move(engines),
+                      std::move(factor_engines),
+                      Dynamics::Arithmetic};
     model.advance(2.0);
 
     CHECK(model.prices()(0) == Catch::Approx(102.0));
     CHECK(model.prices()(1) == Catch::Approx(96.0));
+}
+
+TEST_CASE("FactorModel with geometric dynamics rejects initial prices that are not finite and "
+          "positive",
+          "[process][factor_model][geometric]") {
+    const rng::RngHub hub{rng::Seed{0xB111'B111ULL}};
+    const Scenario s = Scenario::make();
+
+    for (const double bad : {0.0,
+                             -1.0,
+                             std::numeric_limits<double>::infinity(),
+                             std::numeric_limits<double>::quiet_NaN()}) {
+        Vector prices = s.prices;
+        prices(1) = bad;
+        CHECK_THROWS_AS(FactorModel(prices,
+                                    s.mu,
+                                    s.beta,
+                                    s.factor_chol,
+                                    s.idio_vol,
+                                    engines_for(hub, rng::Subsystem::Price, 3),
+                                    engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                    Dynamics::Geometric),
+                        std::invalid_argument);
+        if (std::isfinite(bad)) {
+            CHECK_NOTHROW(FactorModel(prices,
+                                      s.mu,
+                                      s.beta,
+                                      s.factor_chol,
+                                      s.idio_vol,
+                                      engines_for(hub, rng::Subsystem::Price, 3),
+                                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                                      Dynamics::Arithmetic));
+        }
+    }
+}
+
+TEST_CASE("FactorModel geometric advance matches exp((mu - variance/2) dt + noise) with the "
+          "variance of beta L L^T beta^T + idio^2",
+          "[process][factor_model][geometric]") {
+    const rng::RngHub hub{rng::Seed{0xB222'B222ULL}};
+    const Scenario s = Scenario::make();
+
+    std::vector<rng::RngEngine> engines = engines_for(hub, rng::Subsystem::Price, 3);
+    std::vector<rng::RngEngine> factor_engines = engines_for(hub, rng::Subsystem::PriceFactor, 2);
+    std::vector<rng::RngEngine> ref_engines = engines;
+    std::vector<rng::RngEngine> ref_factor_engines = factor_engines;
+
+    // The full asset covariance; only its diagonal is the variance.
+    const Matrix factor_cov = s.factor_chol * s.factor_chol.transpose();
+    const Matrix asset_cov =
+        (s.beta * factor_cov * s.beta.transpose()) + Matrix(s.idio_vol.cwiseAbs2().asDiagonal());
+    const Vector variance = asset_cov.diagonal();
+
+    constexpr double dt = 0.1;
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      std::move(engines),
+                      std::move(factor_engines),
+                      Dynamics::Geometric};
+
+    Vector expected = s.prices;
+    for (int tick = 0; tick < 5; ++tick) {
+        model.advance(dt);
+
+        const Vector f = correlated_normal_increment(s.factor_chol, ref_factor_engines, dt);
+        Vector idio_z(3);
+        for (Index i = 0; i < 3; ++i) {
+            idio_z(i) = mms::math::dist::standard_normal(ref_engines[static_cast<std::size_t>(i)]);
+        }
+        const Vector log_return = ((s.mu - 0.5 * variance) * dt) + (s.beta * f) +
+                                  (s.idio_vol.cwiseProduct(idio_z) * std::sqrt(dt));
+        expected = expected.cwiseProduct(log_return.array().exp().matrix());
+
+        CHECK(max_abs_diff(model.prices(), expected) < 1e-12);
+    }
+}
+
+TEST_CASE("FactorModel geometric with no noise grows at exp(mu dt)",
+          "[process][factor_model][geometric]") {
+    const rng::RngHub hub{rng::Seed{0xB333'B333ULL}};
+    Vector prices(2);
+    prices << 100.0, 100.0;
+    Vector mu(2);
+    mu << 0.5, -0.5;
+
+    FactorModel model{prices,
+                      mu,
+                      Matrix::Zero(2, 1),
+                      Matrix::Zero(1, 1),
+                      Vector::Zero(2),
+                      engines_for(hub, rng::Subsystem::Price, 2),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 1),
+                      Dynamics::Geometric};
+    model.advance(2.0);
+
+    CHECK(model.prices()(0) == Catch::Approx(100.0 * std::exp(1.0)));
+    CHECK(model.prices()(1) == Catch::Approx(100.0 * std::exp(-1.0)));
 }

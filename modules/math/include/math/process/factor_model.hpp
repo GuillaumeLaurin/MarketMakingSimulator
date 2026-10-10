@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <math/math_export.hpp>
+#include <math/process/dynamics.hpp>
 #include <math/process/price_process.hpp>
 #include <math/rng/engine.hpp>
 #include <math/types.hpp>
@@ -30,19 +31,24 @@ public:
     /// beta.rows() == idio_vol.size() == engines.size() == N,
     /// beta.cols() == factor_chol.rows() == factor_chol.cols() ==
     /// factor_engines.size() == k, and every idio_vol entry is finite and
-    /// >= 0.
+    /// >= 0, and, for Dynamics::Geometric, every initial price is finite and
+    /// > 0.
+    ///
+    /// Each step draws f = correlated_normal_increment(factor_chol_,
+    /// factor_engines_, dt) and idio_z, one standard_normal per asset engine,
+    /// then forms noise = beta_ * f + idio_vol_.cwiseProduct(idio_z) * sqrt(dt).
+    /// Arithmetic: prices_ += mu*dt + noise. Geometric: prices_ *=
+    /// exp((mu - variance/2)*dt + noise), variance being the diagonal of
+    /// beta L L^T beta^T plus idio_vol^2.
     FactorModel(Vector initial_prices,
                 Vector mu,
                 Matrix beta,
                 Matrix factor_chol,
                 Vector idio_vol,
                 std::vector<rng::RngEngine> engines,
-                std::vector<rng::RngEngine> factor_engines);
+                std::vector<rng::RngEngine> factor_engines,
+                Dynamics dynamics);
 
-    /// prices_ += mu*dt + beta_ * f + idio_vol_.cwiseProduct(idio_z) * sqrt(dt),
-    /// with f = correlated_normal_increment(factor_chol_, factor_engines_, dt)
-    /// and idio_z one standard_normal per asset engine. Any finite dt is
-    /// accepted, including negative or zero.
     [[nodiscard]] const Vector& prices() const noexcept override { return prices_; }
 
     /// Restores prices_ and both engine groups to their state at construction.
@@ -59,6 +65,8 @@ private:
     Matrix beta_;
     Matrix factor_chol_;
     Vector idio_vol_;
+    Dynamics dynamics_ = Dynamics::Arithmetic;
+    Vector variance_; // diag(beta L L^T beta^T) + idio_vol^2
     std::vector<rng::RngEngine> initial_engines_;
     std::vector<rng::RngEngine> engines_;
     std::vector<rng::RngEngine> initial_factor_engines_;

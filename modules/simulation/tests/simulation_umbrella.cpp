@@ -42,7 +42,7 @@ TEST_CASE("<simulation/simulation.hpp> exposes the whole simulation module",
     const SimulationConfig config{
         .assets = {asset},
         .correlation = math::Matrix::Identity(1, 1),
-        .process = RandomWalkSpec{},
+        .process = RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
         .strategy = mm::StrategyConfig{.gamma = 2.0,
                                        .k = math::Vector::Constant(1, 1.0),
                                        .correlation = math::Matrix::Identity(1, 1),

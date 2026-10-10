@@ -45,7 +45,7 @@ TEST_CASE("<math/process.hpp> exposes the whole process layer", "[process][umbre
     prices << 100.0, 50.0;
     mms::math::Vector mu = mms::math::Vector::Zero(2);
     const std::unique_ptr<PriceProcess> walk = std::make_unique<CorrelatedRandomWalk>(
-        prices, mu, chol, engines_for(hub, rng::Subsystem::Price, 2));
+        prices, mu, chol, engines_for(hub, rng::Subsystem::Price, 2), Dynamics::Arithmetic);
 
     CHECK(walk->asset_count() == 2);
     walk->advance(1.0);
@@ -65,7 +65,8 @@ TEST_CASE("<math/process.hpp> exposes the whole process layer", "[process][umbre
                                       factor_chol,
                                       idio_vol,
                                       engines_for(hub, rng::Subsystem::Price, 2),
-                                      engines_for(hub, rng::Subsystem::PriceFactor, 1));
+                                      engines_for(hub, rng::Subsystem::PriceFactor, 1),
+                                      Dynamics::Arithmetic);
 
     CHECK(factor_model->asset_count() == 2);
     factor_model->advance(1.0);
