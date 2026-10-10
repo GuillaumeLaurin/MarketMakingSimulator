@@ -88,11 +88,12 @@ TEST_CASE("two hubs with the same master agree; different masters do not", "[rng
 
 TEST_CASE("distinct StreamKeys give distinct, non-overlapping streams", "[rng][stream]") {
     const RngHub hub{Seed{0x1234}};
-    const std::array<StreamKey, 4> keys{
+    const std::array<StreamKey, 5> keys{
         StreamKey{.subsystem = Subsystem::Price, .asset = AssetKey{7}},
         StreamKey{.subsystem = Subsystem::Latency, .asset = AssetKey{7}},
         StreamKey{.subsystem = Subsystem::Price, .asset = AssetKey{8}},
         StreamKey{.subsystem = Subsystem::PriceFactor, .asset = no_asset},
+        StreamKey{.subsystem = Subsystem::Agent, .asset = AssetKey{7}},
     };
     std::set<std::array<std::uint64_t, 8>> seen;
     for (const StreamKey& k : keys) {
@@ -173,4 +174,35 @@ TEST_CASE("An asset's stream follows its symbol, not its position", "[rng][strea
     CHECK(hub.engine_for(aapl) != hub.engine_for(msft));
     CHECK(hub.engine_for(aapl) != hub.engine_for(StreamKey{.subsystem = Subsystem::Latency,
                                                            .asset = asset_key_of("AAPL")}));
+}
+
+TEST_CASE("An agent's stream follows its name and is apart from every asset's",
+          "[rng][stream][asset_key]") {
+    const RngHub hub{Seed{0xFACE}};
+    const StreamKey maker{.subsystem = Subsystem::Agent, .asset = asset_key_of("maker")};
+    const StreamKey noise{.subsystem = Subsystem::Agent, .asset = asset_key_of("noise-1")};
+
+    // Another agent coming or going leaves this one's stream alone.
+    const auto before = take8(hub.engine_for(maker));
+    static_cast<void>(hub.engine_for(noise));
+    CHECK(take8(hub.engine_for(maker)) == before);
+    CHECK(hub.engine_for(maker) != hub.engine_for(noise));
+
+    // An agent called AAPL does not share a stream with the asset AAPL, for any of
+    // the asset's subsystems.
+    const auto aapl = asset_key_of("AAPL");
+    const StreamKey agent{.subsystem = Subsystem::Agent, .asset = aapl};
+    for (const Subsystem subsystem :
+         {Subsystem::Price, Subsystem::AdverseFlow, Subsystem::Latency, Subsystem::PriceFactor}) {
+        CHECK(hub.engine_for(agent) !=
+              hub.engine_for(StreamKey{.subsystem = subsystem, .asset = aapl}));
+    }
+}
+
+TEST_CASE("Subsystem values are stable, since they are mixed into every stream", "[rng][stream]") {
+    STATIC_REQUIRE(static_cast<int>(Subsystem::Price) == 0);
+    STATIC_REQUIRE(static_cast<int>(Subsystem::AdverseFlow) == 1);
+    STATIC_REQUIRE(static_cast<int>(Subsystem::Latency) == 2);
+    STATIC_REQUIRE(static_cast<int>(Subsystem::PriceFactor) == 3);
+    STATIC_REQUIRE(static_cast<int>(Subsystem::Agent) == 4);
 }

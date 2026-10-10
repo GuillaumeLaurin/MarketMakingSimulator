@@ -14,8 +14,12 @@
 
 namespace mms::math::rng {
 
-enum class Subsystem : std::uint8_t { Price, AdverseFlow, Latency, PriceFactor };
+/// Append only: the value of a subsystem is mixed into every stream, so reordering
+/// or inserting one would change the random numbers of every saved run.
+enum class Subsystem : std::uint8_t { Price, AdverseFlow, Latency, PriceFactor, Agent };
 
+/// A 64-bit stream identity. Despite the name it is not only for assets: an agent is
+/// keyed by its name through asset_key_of too, under Subsystem::Agent.
 enum class AssetKey : std::uint64_t {};
 
 /// Sentinel for streams that are not per-asset (e.g. a global factor stream).
