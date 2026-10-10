@@ -12,7 +12,7 @@
 
 namespace mms::agents {
 
-/// A limit order. quantity > 0 and price > 0, checked by the gateway.   
+/// A limit order. quantity > 0 and price > 0, checked by the gateway.
 struct SubmitLimit {
     mm::AssetId asset;
     mm::Side side;
@@ -39,6 +39,6 @@ struct Cancel {
 
 using Action = std::variant<SubmitLimit, SubmitMarket, Cancel>;
 
-}  // namespace mms::agents
+} // namespace mms::agents
 
 #endif // MMS_AGENTS_ACTION_HPP

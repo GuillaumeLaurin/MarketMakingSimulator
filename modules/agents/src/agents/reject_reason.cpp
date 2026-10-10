@@ -22,7 +22,7 @@ std::string_view to_string(RejectReason reason) noexcept {
     case RejectReason::InvalidOrder:
         return "invalid order";
     }
-    return "unknown";    
+    return "unknown";
 }
 
 } // namespace mms::agents

@@ -17,8 +17,9 @@
 #include <agents/action.hpp>
 #include <agents/agent_view.hpp>
 #include <agents/reject_reason.hpp>
-#include <math/rng/engine.hpp>
 #include <mm/types.hpp>
+
+#include <math/rng/engine.hpp>
 
 namespace mms::agents {
 
@@ -39,7 +40,8 @@ public:
 
     /// Appends the actions to take now to `out`, which the caller has emptied.
     /// Appending nothing is the usual answer.
-    virtual void act(const AgentView& view, math::rng::RngEngine& rng, std::vector<Action>& out) = 0;
+    virtual void
+    act(const AgentView& view, math::rng::RngEngine& rng, std::vector<Action>& out) = 0;
 
     /// One of this agent's orders traded. Called before the next act().
     virtual void on_fill(const Fill& /*fill*/) {}
