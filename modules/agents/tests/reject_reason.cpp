@@ -17,12 +17,11 @@ namespace {
 using mms::agents::RejectReason;
 using mms::agents::to_string;
 
-constexpr std::array<RejectReason, 7> all_reasons{
+constexpr std::array<RejectReason, 6> all_reasons{
     RejectReason::InsufficientCash,
     RejectReason::InsufficientCollateral,
     RejectReason::ShortNotAllowed,
     RejectReason::PositionLimit,
-    RejectReason::SelfTrade,
     RejectReason::UnknownAsset,
     RejectReason::InvalidOrder,
 };
@@ -36,7 +35,6 @@ TEST_CASE("Each reject reason has its own stable name", "[agents][reject_reason]
     CHECK(to_string(RejectReason::InsufficientCollateral) == "insufficient collateral");
     CHECK(to_string(RejectReason::ShortNotAllowed) == "short selling not allowed");
     CHECK(to_string(RejectReason::PositionLimit) == "position limit");
-    CHECK(to_string(RejectReason::SelfTrade) == "self trade");
     CHECK(to_string(RejectReason::UnknownAsset) == "unknown asset");
     CHECK(to_string(RejectReason::InvalidOrder) == "invalid order");
 }

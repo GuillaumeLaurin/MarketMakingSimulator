@@ -150,7 +150,7 @@ TEST_CASE("The defaults of the optional methods do nothing", "[agents][agent]") 
     const agents::Action action = agents::Cancel{.asset = 0, .id = mm::OrderId{1}};
 
     agent.on_fill(fill);
-    agent.on_reject(action, agents::RejectReason::SelfTrade);
+    agent.on_reject(action, agents::RejectReason::PositionLimit);
 
     CHECK(agent.save().empty());
 }

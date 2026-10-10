@@ -16,7 +16,6 @@ enum class RejectReason : std::uint8_t {
     InsufficientCollateral, ///< a short sale it cannot cover
     ShortNotAllowed,        ///< a short sale from an agent that may not short
     PositionLimit,          ///< it would take the position past its limit
-    SelfTrade,              ///< it would cross the agent's own resting order
     UnknownAsset,           ///< no such asset
     InvalidOrder,           ///< a non-positive quantity or price, or a price off the grid
 };

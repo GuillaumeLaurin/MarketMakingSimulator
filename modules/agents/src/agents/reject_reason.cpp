@@ -15,8 +15,6 @@ std::string_view to_string(RejectReason reason) noexcept {
         return "short selling not allowed";
     case RejectReason::PositionLimit:
         return "position limit";
-    case RejectReason::SelfTrade:
-        return "self trade";
     case RejectReason::UnknownAsset:
         return "unknown asset";
     case RejectReason::InvalidOrder:
