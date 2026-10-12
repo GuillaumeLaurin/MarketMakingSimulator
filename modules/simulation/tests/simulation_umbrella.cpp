@@ -86,10 +86,12 @@ TEST_CASE("<simulation/simulation.hpp> exposes the whole simulation module",
 
     CHECK(runner.finished());
     CHECK(counter.ticks == 20);
-    CHECK(results.assets.size() == 1);
-    CHECK(results.portfolio.pnl_increments.count() == 20);
+    REQUIRE(results.agents.size() == 2);
+    CHECK(results.agents[1].assets.size() == 1);
+    CHECK(results.agents[1].portfolio.pnl_increments.count() == 20);
 
     // run_simulation: the one-call form is the same run.
     const Results again = run_simulation(config);
-    CHECK(again.portfolio.final_breakdown.total() == results.portfolio.final_breakdown.total());
+    CHECK(again.agents[1].portfolio.final_breakdown.total() ==
+          results.agents[1].portfolio.final_breakdown.total());
 }

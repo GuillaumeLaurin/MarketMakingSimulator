@@ -4,6 +4,7 @@
 /// value outside the enumeration still gets a name instead of a crash.
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <set>
 #include <string_view>
@@ -62,4 +63,11 @@ TEST_CASE("The reasons are numbered from zero, in a fixed order", "[agents][reje
         CHECK(static_cast<std::uint8_t>(reason) == expected);
         ++expected;
     }
+}
+
+TEST_CASE("reject_reason_count is the number of reasons: the last one is the one before it",
+          "[agents][reject_reason]") {
+    using mms::agents::RejectReason;
+    CHECK(mms::agents::reject_reason_count ==
+          static_cast<std::size_t>(RejectReason::InvalidOrder) + 1);
 }

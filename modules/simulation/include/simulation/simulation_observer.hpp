@@ -10,10 +10,32 @@
 /// run (World/Simulation) owns the list of observers; this header only
 /// defines the interface.
 
-#include <mm/quote.hpp>
+#include <agents/action.hpp>
+#include <agents/reject_reason.hpp>
 #include <mm/types.hpp>
 
+#include <simulation/agent_id.hpp>
+
 namespace mms::simulation {
+
+/// Who traded, and who started it.
+struct TradeParties {
+    AgentId buyer;
+    AgentId seller;
+    /// The side of the order that started the trade: Buy means the buyer is the one who took
+    /// what was resting, Sell means the seller did.
+    mm::Side aggressor;
+
+    /// The agent whose order started the trade.
+    [[nodiscard]] AgentId aggressive() const noexcept {
+        return aggressor == mm::Side::Buy ? buyer : seller;
+    }
+
+    /// The agent whose resting order was hit.
+    [[nodiscard]] AgentId passive() const noexcept {
+        return aggressor == mm::Side::Buy ? seller : buyer;
+    }
+};
 
 class SimulationObserver {
 public:
@@ -26,18 +48,18 @@ public:
     /// before anything else happens this tick).
     virtual void on_mark(mm::AssetId /*asset*/, mm::Price /*mid*/) {}
 
-    /// The market maker's live quotes on `asset` changed to this (an empty
-    /// side means that side is not quoted).
-    virtual void on_quote(mm::AssetId /*asset*/, const mm::AssetQuotes& /*quotes*/) {}
-
-    /// A trade happened on `asset`. `aggressor_is_mm` is true when the order of the
-    /// (first) market maker started it, false when another agent.s order did.
+    /// A trade happened on `asset`, between these two agents.
     virtual void
-    on_trade(mm::AssetId /*asset*/, const mm::Trade& /*trade*/, bool /*aggressor_is_mm*/) {}
+    on_trade(mm::AssetId /*asset*/, const mm::Trade& /*trade*/, const TradeParties& /*parties*/) {}
 
-    /// The tick that started at on_tick_start is complete: every mark, fill
-    /// and quote change of this tick has happened, so the P&L ledger is now
-    /// final for this tick. This is the moment to read it.
+    /// The gateway refused something `agent` asked for.
+    virtual void on_reject(AgentId /*agent*/,
+                           const agents::Action& /*action*/,
+                           agents::RejectReason /*reason*/) {}
+
+    /// The tick that started at on_tick_start is complete: every mark and fill
+    /// of this tick has happened, so the P&L ledgers are now
+    /// final for this tick. This is the moment to read them.
     virtual void on_tick_end(double /*time*/) {}
 
 protected:

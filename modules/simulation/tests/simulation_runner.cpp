@@ -80,12 +80,13 @@ bool same(const sim::AssetResults& a, const sim::AssetResults& b) {
            a.equity_drawdown.count() == b.equity_drawdown.count() &&
            a.equity_drawdown.peak() == b.equity_drawdown.peak() &&
            a.equity_drawdown.max_drawdown() == b.equity_drawdown.max_drawdown() &&
-           a.mm_trade_count == b.mm_trade_count && a.adverse_trade_count == b.adverse_trade_count &&
+           a.aggressive_trades == b.aggressive_trades && a.passive_trades == b.passive_trades &&
            a.final_breakdown.total() == b.final_breakdown.total();
 }
 
-bool same(const sim::Results& a, const sim::Results& b) {
-    if (a.assets.size() != b.assets.size() || !same(a.portfolio, b.portfolio)) {
+bool same(const sim::AgentResults& a, const sim::AgentResults& b) {
+    if (a.name != b.name || a.assets.size() != b.assets.size() || !same(a.portfolio, b.portfolio) ||
+        a.rejects != b.rejects) {
         return false;
     }
     for (std::size_t i = 0; i < a.assets.size(); ++i) {
@@ -96,19 +97,34 @@ bool same(const sim::Results& a, const sim::Results& b) {
     return true;
 }
 
+bool same(const sim::Results& a, const sim::Results& b) {
+    if (a.agents.size() != b.agents.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < a.agents.size(); ++i) {
+        if (!same(a.agents[i], b.agents[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Records what a second observer sees of the run, including the built-in
 /// observer's progress at the moment it is called.
 struct Probe final : sim::SimulationObserver {
+    static constexpr sim::AgentId maker = 1; // the second agent of make_config
+
     explicit Probe(const sim::SimulationRunner& runner) : runner_(&runner) {}
 
     void on_tick_end(double /*time*/) override {
         ++ticks_seen;
-        results_ticks_seen.push_back(runner_->results().portfolio.pnl_increments.count());
+        results_ticks_seen.push_back(runner_->results().agents[1].portfolio.pnl_increments.count());
     }
 
-    void
-    on_trade(mm::AssetId /*asset*/, const mm::Trade& /*trade*/, bool aggressor_is_mm) override {
-        (aggressor_is_mm ? mm_aggressor : adverse_aggressor) += 1;
+    void on_trade(mm::AssetId /*asset*/,
+                  const mm::Trade& /*trade*/,
+                  const sim::TradeParties& parties) override {
+        (parties.aggressive() == maker ? mm_aggressor : adverse_aggressor) += 1;
     }
 
     const sim::SimulationRunner* runner_;
@@ -129,8 +145,8 @@ TEST_CASE("A fresh runner has run nothing and is not finished", "[simulation][ru
     CHECK(runner.tick_count() == 10);
     CHECK(runner.loop().tick_count() == 0);
     CHECK(runner.world().asset_count() == 2);
-    CHECK(runner.results().assets.size() == 2);
-    CHECK(runner.results().portfolio.pnl_increments.count() == 0);
+    CHECK(runner.results().agents[1].assets.size() == 2);
+    CHECK(runner.results().agents[1].portfolio.pnl_increments.count() == 0);
 }
 
 TEST_CASE("A negative tick_count throws std::invalid_argument", "[simulation][runner]") {
@@ -167,9 +183,9 @@ TEST_CASE("A zero tick_count is a finished run with the starting results", "[sim
 
     const sim::Results& results = runner.run();
     CHECK(&results == &runner.results());
-    CHECK(results.portfolio.pnl_increments.count() == 0);
-    CHECK(results.portfolio.equity_drawdown.count() == 1); // the starting level
-    CHECK(results.portfolio.final_breakdown.total() == 0.0);
+    CHECK(results.agents[1].portfolio.pnl_increments.count() == 0);
+    CHECK(results.agents[1].portfolio.equity_drawdown.count() == 1); // the starting level
+    CHECK(results.agents[1].portfolio.final_breakdown.total() == 0.0);
     CHECK(runner.loop().tick_count() == 0);
 }
 
@@ -183,7 +199,7 @@ TEST_CASE("step advances one tick and finished flips exactly at the budget",
         CHECK_FALSE(runner.finished());
         runner.step();
         CHECK(runner.loop().tick_count() == tick);
-        CHECK(runner.results().portfolio.pnl_increments.count() == tick);
+        CHECK(runner.results().agents[1].portfolio.pnl_increments.count() == tick);
     }
     CHECK(runner.finished());
     CHECK(runner.loop().time() == Catch::Approx(3.0)); // dt = 1
@@ -211,9 +227,9 @@ TEST_CASE("run executes every tick and returns the live results", "[simulation][
     CHECK(&results == &runner.results());
     CHECK(runner.finished());
     CHECK(runner.loop().tick_count() == 25);
-    CHECK(results.portfolio.pnl_increments.count() == 25);
-    CHECK(results.portfolio.equity_drawdown.count() == 26);
-    CHECK(results.portfolio.adverse_trade_count > 0); // the run really traded
+    CHECK(results.agents[1].portfolio.pnl_increments.count() == 25);
+    CHECK(results.agents[1].portfolio.equity_drawdown.count() == 26);
+    CHECK(results.agents[1].portfolio.passive_trades > 0); // the run really traded
 }
 
 TEST_CASE("run once finished does nothing", "[simulation][runner]") {
@@ -236,7 +252,7 @@ TEST_CASE("run after some steps executes only the remaining ticks", "[simulation
     runner.run();
 
     CHECK(runner.loop().tick_count() == 20);
-    CHECK(runner.results().portfolio.pnl_increments.count() == 20);
+    CHECK(runner.results().agents[1].portfolio.pnl_increments.count() == 20);
 }
 
 TEST_CASE("Stepping by hand and running give exactly the same run", "[simulation][runner]") {
@@ -303,11 +319,11 @@ TEST_CASE("An extra observer watches the same run", "[simulation][runner]") {
 
     runner.run();
 
-    const sim::AssetResults& portfolio = runner.results().portfolio;
+    const sim::AssetResults& portfolio = runner.results().agents[1].portfolio;
     CHECK(probe.ticks_seen == 30);
-    CHECK(probe.adverse_aggressor == portfolio.adverse_trade_count);
-    CHECK(probe.mm_aggressor == portfolio.mm_trade_count);
-    CHECK(portfolio.adverse_trade_count > 0);
+    CHECK(probe.adverse_aggressor == runner.results().agents[0].portfolio.aggressive_trades);
+    CHECK(probe.mm_aggressor == portfolio.aggressive_trades);
+    CHECK(portfolio.passive_trades > 0);
 }
 
 TEST_CASE("The built-in observer sees a tick before any observer added by the caller",
@@ -351,34 +367,57 @@ TEST_CASE("A run under the default geometric dynamics completes with sane result
     const sim::Results& results = runner.run();
 
     CHECK(runner.finished());
-    CHECK(results.assets.size() == 2);
-    CHECK(std::isfinite(results.portfolio.final_breakdown.total()));
+    CHECK(results.agents[1].assets.size() == 2);
+    CHECK(std::isfinite(results.agents[1].portfolio.final_breakdown.total()));
     CHECK(runner.world().price_process().prices().minCoeff() > 0.0);
 }
 
-TEST_CASE("A run with no agent has nothing to report on", "[simulation][runner]") {
+TEST_CASE("A run with no agent has no results and still runs", "[simulation][runner]") {
     sim::SimulationConfig config = make_config(5);
     config.agents.clear();
 
-    CHECK_THROWS_AS(sim::SimulationRunner(config), std::invalid_argument);
+    sim::SimulationRunner runner(config);
+    const sim::Results& results = runner.run();
+
+    CHECK(runner.finished());
+    CHECK(results.agents.empty());
 }
 
-TEST_CASE("The results describe the first market maker, whatever comes before it",
+TEST_CASE("The results have one entry per agent, in the order of the config, each against its "
+          "own account",
           "[simulation][runner]") {
-    sim::SimulationConfig config = make_config(20);
-    config.agents.insert(config.agents.begin(),
-                         sim::AgentSpec{.profile = {.name = "bystander", .initial_cash = 0.0},
-                                        .timing = {},
-                                        .behavior = mms::agents::InformedFlowSpec{
-                                            .lambda = 1.0,
-                                            .direction_correlation = 0.0,
-                                            .size = sim::UniformIntSpec{.min = 1, .max = 2}}});
+    sim::SimulationRunner runner(make_config(20));
+    const sim::Results& results = runner.run();
 
+    REQUIRE(results.agents.size() == 2);
+    REQUIRE(runner.world().agent_count() == 2);
+    for (sim::AgentId id = 0; id < 2; ++id) {
+        CHECK(results.agents[id].name == runner.world().agent(id).account().profile().name);
+        CHECK(results.agents[id].portfolio.final_breakdown.total() ==
+              runner.world().agent(id).account().ledger().portfolio().total());
+    }
+    // The informed trader and the market maker are on opposite sides of every trade.
+    CHECK(results.agents[0].portfolio.aggressive_trades ==
+          results.agents[1].portfolio.passive_trades);
+    CHECK(results.agents[0].portfolio.final_breakdown.total() !=
+          results.agents[1].portfolio.final_breakdown.total());
+}
+
+TEST_CASE("Refusals reach the results and any other observer", "[simulation][runner]") {
+    sim::SimulationConfig config = make_config(20);
+    config.agents.push_back(sim::AgentSpec{.profile = {.name = "broke", .initial_cash = 0.0},
+                                           .timing = {},
+                                           .behavior = mms::agents::InformedFlowSpec{
+                                               .lambda = 2.0,
+                                               .direction_correlation = 0.0,
+                                               .size = sim::UniformIntSpec{.min = 1, .max = 2}}});
     sim::SimulationRunner runner(config);
+    Probe probe(runner);
+    runner.add_observer(probe);
+
     runner.run();
 
-    REQUIRE(runner.world().agent_count() == 3);
-    CHECK(runner.results().portfolio.final_breakdown.total() ==
-          runner.world().agent(2).account().ledger().portfolio().total());
-    CHECK(runner.results().portfolio.final_breakdown.total() != 0.0);
+    CHECK(runner.results().agents[2].total_rejects() > 0);
+    CHECK(runner.results().agents[0].total_rejects() == 0);
+    CHECK(runner.results().agents[2].portfolio.aggressive_trades == 0);
 }

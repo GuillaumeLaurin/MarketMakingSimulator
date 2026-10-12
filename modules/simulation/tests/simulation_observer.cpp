@@ -7,19 +7,19 @@
 /// World/Simulation will use it (several observers watching one run).
 
 #include <memory>
-#include <optional>
-#include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include <agents/action.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <mm/quote.hpp>
 #include <mm/types.hpp>
 
 #include <simulation/simulation_observer.hpp>
 
 namespace sim = mms::simulation;
+namespace agents = mms::agents;
 namespace mm = mms::mm;
 
 static_assert(!std::is_default_constructible_v<sim::SimulationObserver>,
@@ -31,11 +31,23 @@ namespace {
 /// Overrides every method and records what it was called with.
 class RecordingObserver final : public sim::SimulationObserver {
 public:
+    struct TradeSeen {
+        mm::AssetId asset;
+        mm::Trade trade;
+        sim::TradeParties parties;
+    };
+
+    struct RejectSeen {
+        sim::AgentId agent;
+        agents::Action action;
+        agents::RejectReason reason;
+    };
+
     std::vector<double> tick_starts;
     std::vector<double> tick_ends;
     std::vector<std::pair<mm::AssetId, mm::Price>> marks;
-    std::vector<std::pair<mm::AssetId, mm::AssetQuotes>> quotes;
-    std::vector<std::tuple<mm::AssetId, mm::Trade, bool>> trades;
+    std::vector<TradeSeen> trades;
+    std::vector<RejectSeen> rejects;
 
     void on_tick_start(double time) override { tick_starts.push_back(time); }
 
@@ -43,12 +55,15 @@ public:
 
     void on_mark(mm::AssetId asset, mm::Price mid) override { marks.emplace_back(asset, mid); }
 
-    void on_quote(mm::AssetId asset, const mm::AssetQuotes& asset_quotes) override {
-        quotes.emplace_back(asset, asset_quotes);
+    void
+    on_trade(mm::AssetId asset, const mm::Trade& trade, const sim::TradeParties& parties) override {
+        trades.push_back({.asset = asset, .trade = trade, .parties = parties});
     }
 
-    void on_trade(mm::AssetId asset, const mm::Trade& trade, bool aggressor_is_mm) override {
-        trades.emplace_back(asset, trade, aggressor_is_mm);
+    void on_reject(sim::AgentId agent,
+                   const agents::Action& action,
+                   agents::RejectReason reason) override {
+        rejects.push_back({.agent = agent, .action = action, .reason = reason});
     }
 };
 
@@ -72,8 +87,11 @@ TEST_CASE("A subclass overriding nothing behaves as a pure no-op (the base itsel
     observer.on_tick_start(1.0);
     observer.on_tick_end(1.0);
     observer.on_mark(0, 100.0);
-    observer.on_quote(0, mm::AssetQuotes{});
-    observer.on_trade(0, make_trade(100.0, 5), false);
+    observer.on_trade(0,
+                      make_trade(100.0, 5),
+                      sim::TradeParties{.buyer = 0, .seller = 1, .aggressor = mm::Side::Buy});
+    observer.on_reject(
+        0, agents::Cancel{.asset = 0, .id = mm::OrderId{1}}, agents::RejectReason::InvalidOrder);
 
     SUCCEED();
 }
@@ -114,35 +132,49 @@ TEST_CASE("A recording observer receives on_mark with the asset and the mid",
     CHECK(observer.marks[1] == std::pair<mm::AssetId, mm::Price>{1, 50.0});
 }
 
-TEST_CASE("A recording observer receives on_quote with the live quotes, including an empty side",
-          "[simulation][observer]") {
-    RecordingObserver observer;
-    const mm::AssetQuotes asked_both{.bid = mm::Quote{.price = 99.0, .quantity = 5},
-                                     .ask = mm::Quote{.price = 101.0, .quantity = 5}};
-    const mm::AssetQuotes asked_ask_only{.bid = std::nullopt,
-                                         .ask = mm::Quote{.price = 101.0, .quantity = 5}};
-
-    observer.on_quote(0, asked_both);
-    observer.on_quote(0, asked_ask_only);
-
-    REQUIRE(observer.quotes.size() == 2);
-    CHECK(observer.quotes[0].second.bid.has_value());
-    CHECK_FALSE(observer.quotes[1].second.bid.has_value());
-    CHECK(observer.quotes[1].second.ask.has_value());
-}
-
-TEST_CASE("A recording observer receives on_trade with the asset, the trade and the aggressor flag",
+TEST_CASE("A recording observer receives on_trade with the asset, the trade and the two agents",
           "[simulation][observer]") {
     RecordingObserver observer;
 
-    observer.on_trade(0, make_trade(100.0, 7), true);
-    observer.on_trade(1, make_trade(50.0, 3), false);
+    observer.on_trade(0,
+                      make_trade(100.0, 7),
+                      sim::TradeParties{.buyer = 2, .seller = 5, .aggressor = mm::Side::Buy});
+    observer.on_trade(1,
+                      make_trade(50.0, 3),
+                      sim::TradeParties{.buyer = 4, .seller = 1, .aggressor = mm::Side::Sell});
 
     REQUIRE(observer.trades.size() == 2);
-    CHECK(std::get<0>(observer.trades[0]) == 0);
-    CHECK(std::get<1>(observer.trades[0]).quantity == 7);
-    CHECK(std::get<2>(observer.trades[0]) == true);
-    CHECK(std::get<2>(observer.trades[1]) == false);
+    CHECK(observer.trades[0].asset == 0);
+    CHECK(observer.trades[0].trade.quantity == 7);
+    CHECK(observer.trades[0].parties.buyer == 2);
+    CHECK(observer.trades[0].parties.seller == 5);
+    CHECK(observer.trades[1].parties.aggressor == mm::Side::Sell);
+}
+
+TEST_CASE("The aggressive agent is the buyer when a buyer started the trade, the seller otherwise",
+          "[simulation][observer]") {
+    const sim::TradeParties buyer_took{.buyer = 2, .seller = 5, .aggressor = mm::Side::Buy};
+    CHECK(buyer_took.aggressive() == 2);
+    CHECK(buyer_took.passive() == 5);
+
+    const sim::TradeParties seller_took{.buyer = 2, .seller = 5, .aggressor = mm::Side::Sell};
+    CHECK(seller_took.aggressive() == 5);
+    CHECK(seller_took.passive() == 2);
+}
+
+TEST_CASE("A recording observer receives on_reject with the agent, the action and the reason",
+          "[simulation][observer]") {
+    RecordingObserver observer;
+
+    observer.on_reject(
+        3,
+        agents::SubmitLimit{.asset = 1, .side = mm::Side::Buy, .price = 9.0, .quantity = 4},
+        agents::RejectReason::InsufficientCash);
+
+    REQUIRE(observer.rejects.size() == 1);
+    CHECK(observer.rejects[0].agent == 3);
+    CHECK(observer.rejects[0].reason == agents::RejectReason::InsufficientCash);
+    CHECK(std::get<agents::SubmitLimit>(observer.rejects[0].action).quantity == 4);
 }
 
 TEST_CASE("Several observers can watch the same calls independently", "[simulation][observer]") {

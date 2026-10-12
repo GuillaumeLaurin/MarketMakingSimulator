@@ -21,9 +21,8 @@
 /// as of `info_delay` ago, drawn each time the agent acts; its own orders and account are
 /// current. The true moves of the common factors go to the factor traders.
 ///
-/// The observers still speak of one market maker: the first market maker of the config.
-/// Its quotes are the ones notified and returned by live_quotes(), and a trade counts as the
-/// market maker.s when its order started it.
+/// Observers are told of every trade, with the two agents and who started it, and of every
+/// action the gateway refuses.
 
 #include <cstddef>
 #include <cstdint>
@@ -70,10 +69,10 @@ public:
 
     [[nodiscard]] std::int64_t tick_count() const noexcept { return ticks_; }
 
-    /// The first market maker's quotes as they currently rest in the books: for each side
-    /// of each asset, its oldest order that has reached the exchange. Empty slots when the
-    /// config has no market maker.
-    [[nodiscard]] mm::LiveQuoteSet live_quotes() const;
+    /// The quotes of agent `id` as they currently rest in the books: for each side of each
+    /// asset, its oldest order that has reached the exchange. Throws std::out_of_range for an
+    /// unknown agent.
+    [[nodiscard]] mm::LiveQuoteSet quotes_of(AgentId id) const;
 
     /// How many resting orders the loop knows the owner of. It is the number of orders
     /// resting in all the books together, since only agents leave orders there.
@@ -98,8 +97,6 @@ private:
     void on_trade(mm::AssetId asset, const mm::Trade& trade);
     void on_order_cancelled(mm::AssetId asset, mm::OrderId id);
     [[nodiscard]] std::optional<OrderOwner> owner_of(mm::AssetId asset, mm::OrderId id) const;
-    void touch(AgentId agent, mm::AssetId asset);
-    void notify_quote_changes();
 
     World& world_;
     double dt_;
@@ -108,7 +105,6 @@ private:
     std::int64_t ticks_ = 0;
     OrderRegistry registry_;
     std::optional<Submission> submission_;
-    std::optional<AgentId> observed_maker_;
     MarketHistory history_;
     std::size_t book_depth_;
     std::vector<bool> shown_signal_;  ///< per agent: gets AssetView::signal
@@ -116,7 +112,6 @@ private:
     std::vector<std::uint64_t> seen_; ///< per agent: the last tick of tape it has been shown
     std::vector<SimulationObserver*> observers_;
     std::vector<std::unique_ptr<EngineObserver>> engine_observers_;
-    std::vector<bool> quotes_changed_;
 };
 
 } // namespace mms::simulation

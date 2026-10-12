@@ -3,7 +3,7 @@
 /// controllable: the true price barely moves (volatility 1e-9) except for a
 /// chosen drift, adverse flow is mostly a SCRIPTED taker that sends one order before a
 /// step (so a fill's size and instant are exact), and the market
-/// maker's quotes are read back from loop.live_quotes() and from the books.
+/// maker's quotes are read back from loop.quotes_of(maker_id) and from the books.
 /// The properties that matter most are checked as invariants over many ticks
 /// and seeds: what the loop believes it has live is exactly what rests in the
 /// books, even with random latency, races between a cancel and a fill, and
@@ -107,14 +107,13 @@ struct Recorder final : sim::SimulationObserver {
     struct TradeSeen {
         mm::AssetId asset;
         mm::Trade trade;
-        bool aggressor_is_mm;
+        sim::TradeParties parties;
     };
 
     std::vector<std::string> sequence;
     std::vector<double> starts;
     std::vector<double> ends;
     std::vector<std::pair<mm::AssetId, mm::Price>> marks;
-    std::vector<std::pair<mm::AssetId, mm::AssetQuotes>> quotes;
     std::vector<TradeSeen> trades;
 
     void on_tick_start(double time) override {
@@ -127,14 +126,10 @@ struct Recorder final : sim::SimulationObserver {
         marks.emplace_back(asset, mid);
     }
 
-    void on_quote(mm::AssetId asset, const mm::AssetQuotes& asset_quotes) override {
-        sequence.emplace_back("quote");
-        quotes.emplace_back(asset, asset_quotes);
-    }
-
-    void on_trade(mm::AssetId asset, const mm::Trade& trade, bool aggressor_is_mm) override {
+    void
+    on_trade(mm::AssetId asset, const mm::Trade& trade, const sim::TradeParties& parties) override {
         sequence.emplace_back("trade");
-        trades.push_back({.asset = asset, .trade = trade, .aggressor_is_mm = aggressor_is_mm});
+        trades.push_back({.asset = asset, .trade = trade, .parties = parties});
     }
 
     void on_tick_end(double time) override {
@@ -186,7 +181,7 @@ void check_consistent(const sim::World& world, const sim::TickLoop& loop) {
     std::size_t resting = 0;
     for (mm::AssetId asset = 0; asset < world.asset_count(); ++asset) {
         const mm::OrderBook& book = world.matching_engine(asset).book();
-        const mm::LiveQuoteSet live_set = loop.live_quotes();
+        const mm::LiveQuoteSet live_set = loop.quotes_of(maker_id);
         const mm::AssetLiveQuotes& live = live_set[asset];
         for (const mm::Side side : {mm::Side::Buy, mm::Side::Sell}) {
             const std::optional<mm::LiveQuote>& quote = side == mm::Side::Buy ? live.bid : live.ask;
@@ -237,8 +232,8 @@ TEST_CASE("A fresh loop is at time zero with nothing live", "[simulation][tick_l
 
     CHECK(loop.time() == 0.0);
     CHECK(loop.tick_count() == 0);
-    REQUIRE(loop.live_quotes().size() == 2);
-    for (const mm::AssetLiveQuotes& live : loop.live_quotes()) {
+    REQUIRE(loop.quotes_of(maker_id).size() == 2);
+    for (const mm::AssetLiveQuotes& live : loop.quotes_of(maker_id)) {
         CHECK_FALSE(live.bid.has_value());
         CHECK_FALSE(live.ask.has_value());
     }
@@ -279,8 +274,7 @@ TEST_CASE("Each step advances the tick count and the time by exactly dt",
     CHECK(loop.time() == 7.0 * 0.1); // k * dt, not a sum of seven rounded additions
 }
 
-TEST_CASE("A tick notifies in a fixed order, and a first tick publishes the new quotes",
-          "[simulation][tick_loop]") {
+TEST_CASE("A tick notifies in a fixed order", "[simulation][tick_loop]") {
     const sim::SimulationConfig config = make_config();
     sim::World world(config);
     sim::TickLoop loop(world, config);
@@ -289,7 +283,7 @@ TEST_CASE("A tick notifies in a fixed order, and a first tick publishes the new 
 
     loop.step();
 
-    const std::vector<std::string> expected{"start", "mark", "quote", "end"};
+    const std::vector<std::string> expected{"start", "mark", "end"};
     CHECK(recorder.sequence == expected);
     CHECK(recorder.starts == std::vector<double>{1.0});
     CHECK(recorder.ends == std::vector<double>{1.0});
@@ -306,7 +300,7 @@ TEST_CASE("With no latency the first tick puts both quotes live, in the book",
 
     loop.step();
 
-    const mm::AssetLiveQuotes live = loop.live_quotes()[0];
+    const mm::AssetLiveQuotes live = loop.quotes_of(maker_id)[0];
     REQUIRE(live.bid.has_value());
     REQUIRE(live.ask.has_value());
     CHECK(live.bid->quote.quantity == 10);
@@ -321,15 +315,15 @@ TEST_CASE("A quote that is still good is left alone, at threshold 1", "[simulati
     sim::World world(config);
     sim::TickLoop loop(world, config);
     loop.step();
-    const mm::OrderId bid_id = loop.live_quotes()[0].bid->id;
-    const mm::OrderId ask_id = loop.live_quotes()[0].ask->id;
+    const mm::OrderId bid_id = loop.quotes_of(maker_id)[0].bid->id;
+    const mm::OrderId ask_id = loop.quotes_of(maker_id)[0].ask->id;
     Recorder recorder;
     loop.add_observer(recorder);
 
     loop.step();
 
-    CHECK(loop.live_quotes()[0].bid->id == bid_id);
-    CHECK(loop.live_quotes()[0].ask->id == ask_id);
+    CHECK(loop.quotes_of(maker_id)[0].bid->id == bid_id);
+    CHECK(loop.quotes_of(maker_id)[0].ask->id == ask_id);
     const std::vector<std::string> expected{
         "start", "mark", "end"}; // no quote event: nothing changed
     CHECK(recorder.sequence == expected);
@@ -340,13 +334,13 @@ TEST_CASE("At threshold 0 every quote is replaced at every tick", "[simulation][
     sim::World world(config);
     sim::TickLoop loop(world, config);
     loop.step();
-    const mm::OrderId bid_id = loop.live_quotes()[0].bid->id;
-    const mm::OrderId ask_id = loop.live_quotes()[0].ask->id;
+    const mm::OrderId bid_id = loop.quotes_of(maker_id)[0].bid->id;
+    const mm::OrderId ask_id = loop.quotes_of(maker_id)[0].ask->id;
 
     loop.step();
 
-    CHECK(loop.live_quotes()[0].bid->id != bid_id);
-    CHECK(loop.live_quotes()[0].ask->id != ask_id);
+    CHECK(loop.quotes_of(maker_id)[0].bid->id != bid_id);
+    CHECK(loop.quotes_of(maker_id)[0].ask->id != ask_id);
     check_consistent(world, loop);
 }
 
@@ -359,7 +353,7 @@ TEST_CASE("An adverse buy takes part of the ask: position, spread capture and no
     Taker taker(world);
     sim::TickLoop loop(world, config);
     loop.step();
-    const mm::Price ask_price = loop.live_quotes()[0].ask->quote.price;
+    const mm::Price ask_price = loop.quotes_of(maker_id)[0].ask->quote.price;
     Recorder recorder;
     loop.add_observer(recorder);
 
@@ -368,9 +362,9 @@ TEST_CASE("An adverse buy takes part of the ask: position, spread capture and no
 
     // The market maker sold 4 at its ask, 6 of the quote still rests.
     CHECK(world.agent(maker_id).account().ledger().position(0).quantity() == -4);
-    REQUIRE(loop.live_quotes()[0].ask.has_value());
-    CHECK(loop.live_quotes()[0].ask->quote.quantity == 6);
-    CHECK(loop.live_quotes()[0].bid->quote.quantity == 10); // the bid is untouched
+    REQUIRE(loop.quotes_of(maker_id)[0].ask.has_value());
+    CHECK(loop.quotes_of(maker_id)[0].ask->quote.quantity == 6);
+    CHECK(loop.quotes_of(maker_id)[0].bid->quote.quantity == 10); // the bid is untouched
     check_consistent(world, loop);
 
     // Sold above the mid: positive spread capture of (ask - mid) per share.
@@ -380,14 +374,16 @@ TEST_CASE("An adverse buy takes part of the ask: position, spread capture and no
     REQUIRE(recorder.trades.size() == 1);
     CHECK(recorder.trades[0].asset == 0);
     CHECK(recorder.trades[0].trade.quantity == 4);
-    CHECK(recorder.trades[0].trade.price == ask_price); // the maker's price
-    CHECK_FALSE(recorder.trades[0].aggressor_is_mm);    // the aggressor was adverse flow
+    CHECK(recorder.trades[0].trade.price == ask_price);  // the maker's price
+    CHECK(recorder.trades[0].parties.aggressive() == 0); // the taker started it
+    CHECK(recorder.trades[0].parties.passive() == maker_id);
+    CHECK(recorder.trades[0].parties.buyer == 0);
+    CHECK(recorder.trades[0].parties.seller == maker_id);
+    CHECK(recorder.trades[0].parties.aggressor == mm::Side::Buy);
 
-    // The trade comes before the quote change it caused.
-    const std::vector<std::string> expected{"start", "mark", "trade", "quote", "end"};
+    const std::vector<std::string> expected{"start", "mark", "trade", "end"};
     CHECK(recorder.sequence == expected);
-    REQUIRE(recorder.quotes.size() == 1);
-    CHECK(recorder.quotes[0].second.ask->quantity == 6);
+    CHECK(loop.quotes_of(maker_id)[0].ask->quote.quantity == 6);
 }
 
 TEST_CASE("An adverse sell takes part of the bid", "[simulation][tick_loop]") {
@@ -396,13 +392,13 @@ TEST_CASE("An adverse sell takes part of the bid", "[simulation][tick_loop]") {
     Taker taker(world);
     sim::TickLoop loop(world, config);
     loop.step();
-    const mm::Price bid_price = loop.live_quotes()[0].bid->quote.price;
+    const mm::Price bid_price = loop.quotes_of(maker_id)[0].bid->quote.price;
 
     taker.market(0, mm::Side::Sell, 3);
     loop.step();
 
     CHECK(world.agent(maker_id).account().ledger().position(0).quantity() == 3); // long 3
-    CHECK(loop.live_quotes()[0].bid->quote.quantity == 7);
+    CHECK(loop.quotes_of(maker_id)[0].bid->quote.quantity == 7);
     // Bought below the mid: positive spread capture of (mid - bid) per share.
     CHECK(world.agent(maker_id).account().ledger().breakdown(0).spread_capture ==
           Catch::Approx((mid_of(world) - bid_price) * 3.0).margin(1e-6));
@@ -424,14 +420,12 @@ TEST_CASE("An adverse order larger than the quote empties it and the rest is dis
 
     CHECK(world.agent(maker_id).account().ledger().position(0).quantity() ==
           -10); // IOC: the 15 left over do not rest
-    CHECK_FALSE(loop.live_quotes()[0].ask.has_value());
+    CHECK_FALSE(loop.quotes_of(maker_id)[0].ask.has_value());
     CHECK(world.matching_engine(0).book().empty(mm::Side::Sell));
     check_consistent(world, loop);
-    REQUIRE(recorder.quotes.size() == 1);
-    CHECK_FALSE(recorder.quotes[0].second.ask.has_value()); // published as "no ask"
 
     loop.step(); // and the empty side is quoted again
-    CHECK(loop.live_quotes()[0].ask.has_value());
+    CHECK(loop.quotes_of(maker_id)[0].ask.has_value());
     check_consistent(world, loop);
 }
 
@@ -458,7 +452,7 @@ TEST_CASE("A maker fee is charged on what the market maker traded", "[simulation
     Taker taker(world);
     sim::TickLoop loop(world, config);
     loop.step();
-    const mm::Price ask_price = loop.live_quotes()[0].ask->quote.price;
+    const mm::Price ask_price = loop.quotes_of(maker_id)[0].ask->quote.price;
 
     taker.market(0, mm::Side::Buy, 4);
     loop.step();
@@ -476,15 +470,15 @@ TEST_CASE("After a fill the quote is restocked and re-centred on the inventory",
     loop.step();
     taker.market(0, mm::Side::Buy, 4);
     loop.step();
-    const mm::OrderId old_ask = loop.live_quotes()[0].ask->id;
-    const mm::Price old_bid_price = loop.live_quotes()[0].bid->quote.price;
+    const mm::OrderId old_ask = loop.quotes_of(maker_id)[0].ask->id;
+    const mm::Price old_bid_price = loop.quotes_of(maker_id)[0].bid->quote.price;
 
     loop.step(); // sees quantity 6 against 10 wanted, and a short position
 
-    CHECK(loop.live_quotes()[0].ask->id != old_ask);
-    CHECK(loop.live_quotes()[0].ask->quote.quantity == 10);
+    CHECK(loop.quotes_of(maker_id)[0].ask->id != old_ask);
+    CHECK(loop.quotes_of(maker_id)[0].ask->quote.quantity == 10);
     // Short 4: the reservation price rises, so the bid moves up with it.
-    CHECK(loop.live_quotes()[0].bid->quote.price > old_bid_price);
+    CHECK(loop.quotes_of(maker_id)[0].bid->quote.price > old_bid_price);
     check_consistent(world, loop);
 }
 
@@ -500,7 +494,7 @@ TEST_CASE("Adverse flow hits the PREVIOUS tick's quote, not the freshly updated 
     Taker taker(world);
     sim::TickLoop loop(world, config);
     loop.step();
-    const mm::Price stale_ask = loop.live_quotes()[0].ask->quote.price;
+    const mm::Price stale_ask = loop.quotes_of(maker_id)[0].ask->quote.price;
     Recorder recorder;
     loop.add_observer(recorder);
 
@@ -527,7 +521,7 @@ TEST_CASE("Generated adverse flow after an up move with full correlation only ev
 
     std::size_t checked = 0;
     for (int i = 0; i < 30; ++i) {
-        const std::optional<mm::LiveQuote> ask_before = loop.live_quotes()[0].ask;
+        const std::optional<mm::LiveQuote> ask_before = loop.quotes_of(maker_id)[0].ask;
         loop.step();
         CHECK(world.agent(maker_id).account().ledger().position(0).quantity() <= 0);
         check_consistent(world, loop);
@@ -544,7 +538,7 @@ TEST_CASE("Generated adverse flow after an up move with full correlation only ev
     CHECK(world.agent(maker_id).account().ledger().position(0).quantity() < 0);
     REQUIRE_FALSE(recorder.trades.empty());
     for (const Recorder::TradeSeen& seen : recorder.trades) {
-        CHECK_FALSE(seen.aggressor_is_mm);
+        CHECK(seen.parties.aggressive() != maker_id);
     }
 }
 
@@ -594,14 +588,14 @@ TEST_CASE("With latency a request is in flight, not live, and is not sent twice"
 
     loop.step(); // two submits scheduled for time 2: nothing live yet
 
-    CHECK_FALSE(loop.live_quotes()[0].bid.has_value());
-    CHECK_FALSE(loop.live_quotes()[0].ask.has_value());
+    CHECK_FALSE(loop.quotes_of(maker_id)[0].bid.has_value());
+    CHECK_FALSE(loop.quotes_of(maker_id)[0].ask.has_value());
     CHECK(world.event_queue().size() == 2);
 
     loop.step(); // the two submits execute; the busy sides are NOT planned again
 
-    CHECK(loop.live_quotes()[0].bid.has_value());
-    CHECK(loop.live_quotes()[0].ask.has_value());
+    CHECK(loop.quotes_of(maker_id)[0].bid.has_value());
+    CHECK(loop.quotes_of(maker_id)[0].ask.has_value());
     CHECK(world.event_queue().empty());
     CHECK(world.matching_engine(0).book().size(mm::Side::Buy) == 1);
     CHECK(world.matching_engine(0).book().size(mm::Side::Sell) == 1);
@@ -621,16 +615,16 @@ TEST_CASE("A cancel that arrives after its quote was filled away is harmless",
     sim::TickLoop loop(world, config);
     loop.step();
     loop.step(); // the first quotes are live
-    REQUIRE(loop.live_quotes()[0].ask.has_value());
+    REQUIRE(loop.quotes_of(maker_id)[0].ask.has_value());
 
     taker.market(0, mm::Side::Buy, 50);
     loop.step(); // the ask is taken (10), its cancel is still in flight
 
     CHECK(world.agent(maker_id).account().ledger().position(0).quantity() == -10);
-    CHECK_FALSE(loop.live_quotes()[0].ask.has_value());
+    CHECK_FALSE(loop.quotes_of(maker_id)[0].ask.has_value());
 
     CHECK_NOTHROW(loop.step()); // the cancel finds nothing, the submit finds an empty side
-    CHECK(loop.live_quotes()[0].ask.has_value());
+    CHECK(loop.quotes_of(maker_id)[0].ask.has_value());
     CHECK(world.event_queue().empty());
     check_consistent(world, loop);
     CHECK_NOTHROW(loop.step());               // and the side is no longer stuck as busy:
@@ -721,7 +715,7 @@ RunSummary run(std::uint64_t seed) {
     for (int tick = 0; tick < 50; ++tick) {
         loop.step();
     }
-    const std::optional<mm::LiveQuote> bid = loop.live_quotes()[0].bid;
+    const std::optional<mm::LiveQuote> bid = loop.quotes_of(maker_id)[0].bid;
     return RunSummary{.position = world.agent(maker_id).account().ledger().position(0).quantity(),
                       .trades = recorder.trades.size(),
                       .last_bid_id = bid.has_value() ? static_cast<std::uint64_t>(bid->id) : 0U};
@@ -744,7 +738,7 @@ TEST_CASE("Each asset is booked on its own", "[simulation][tick_loop]") {
     Taker taker(world);
     sim::TickLoop loop(world, config);
     loop.step();
-    REQUIRE(loop.live_quotes()[1].ask.has_value());
+    REQUIRE(loop.quotes_of(maker_id)[1].ask.has_value());
     Recorder recorder;
     loop.add_observer(recorder);
 
@@ -753,8 +747,8 @@ TEST_CASE("Each asset is booked on its own", "[simulation][tick_loop]") {
 
     CHECK(world.agent(maker_id).account().ledger().position(0).quantity() == 0);
     CHECK(world.agent(maker_id).account().ledger().position(1).quantity() == -4);
-    CHECK(loop.live_quotes()[0].ask->quote.quantity == 10);
-    CHECK(loop.live_quotes()[1].ask->quote.quantity == 6);
+    CHECK(loop.quotes_of(maker_id)[0].ask->quote.quantity == 10);
+    CHECK(loop.quotes_of(maker_id)[1].ask->quote.quantity == 6);
     REQUIRE(recorder.trades.size() == 1);
     CHECK(recorder.trades[0].asset == 1);
     check_consistent(world, loop);
@@ -774,7 +768,7 @@ TEST_CASE("Cancels of the same OrderId on different assets in one tick do not co
         check_consistent(world, loop);
     }
     // Both assets really did replace their quotes (the ids are those of replacements).
-    CHECK(loop.live_quotes()[0].bid->id == loop.live_quotes()[1].bid->id);
+    CHECK(loop.quotes_of(maker_id)[0].bid->id == loop.quotes_of(maker_id)[1].bid->id);
 }
 
 TEST_CASE("Every observer sees the same run", "[simulation][tick_loop]") {
@@ -817,15 +811,15 @@ TEST_CASE("An agent acts once per decision period, counted from when it last act
     sim::TickLoop loop(world, config);
 
     loop.step(); // tick 1: the first act
-    REQUIRE(loop.live_quotes()[0].bid.has_value());
-    const mm::OrderId first_bid = loop.live_quotes()[0].bid->id;
+    REQUIRE(loop.quotes_of(maker_id)[0].bid.has_value());
+    const mm::OrderId first_bid = loop.quotes_of(maker_id)[0].bid->id;
 
     loop.step(); // ticks 2 and 3: not its turn, the quotes stay as they are
     loop.step();
-    CHECK(loop.live_quotes()[0].bid->id == first_bid);
+    CHECK(loop.quotes_of(maker_id)[0].bid->id == first_bid);
 
     loop.step(); // tick 4: three units of time since tick 1, threshold 0 replaces
-    CHECK(loop.live_quotes()[0].bid->id != first_bid);
+    CHECK(loop.quotes_of(maker_id)[0].bid->id != first_bid);
 }
 
 TEST_CASE("Another agent trades against the market maker and both accounts are settled",
@@ -852,7 +846,7 @@ TEST_CASE("Another agent trades against the market maker and both accounts are s
 
     REQUIRE_FALSE(recorder.trades.empty());
     for (const Recorder::TradeSeen& seen : recorder.trades) {
-        CHECK_FALSE(seen.aggressor_is_mm); // the taker started every one of them
+        CHECK(seen.parties.aggressive() != maker_id); // the taker started every one of them
     }
     CHECK(world.agent(2).account().ledger().position(0).quantity() != 0);
 }
@@ -874,7 +868,7 @@ TEST_CASE("Orders the gateway refuses never reach an exchange", "[simulation][ti
     CHECK(world.matching_engine(0).book().empty(mm::Side::Sell));
 }
 
-TEST_CASE("Without a market maker there are no quotes to report and the run goes on",
+TEST_CASE("Without a market maker the run goes on and an agent has no quotes",
           "[simulation][tick_loop][agents]") {
     sim::SimulationConfig config = make_config({.assets = 2});
     config.agents = {taker("alone")};
@@ -887,11 +881,10 @@ TEST_CASE("Without a market maker there are no quotes to report and the run goes
         loop.step();
     }
 
-    const mm::LiveQuoteSet live = loop.live_quotes();
+    const mm::LiveQuoteSet live = loop.quotes_of(0);
     REQUIRE(live.size() == 2);
     CHECK_FALSE(live[0].bid.has_value());
     CHECK_FALSE(live[1].ask.has_value());
-    CHECK(recorder.quotes.empty());
     CHECK(recorder.trades.empty()); // nobody to trade with
 }
 
@@ -908,7 +901,7 @@ TEST_CASE("Adding an agent does not change what another agent decides",
         std::vector<std::uint64_t> ids;
         for (int tick = 0; tick < 30; ++tick) {
             loop.step();
-            const mm::LiveQuoteSet live = loop.live_quotes();
+            const mm::LiveQuoteSet live = loop.quotes_of(maker_id);
             ids.push_back(live[0].bid.has_value() ? static_cast<std::uint64_t>(live[0].bid->id)
                                                   : 0U);
         }
@@ -1115,8 +1108,8 @@ TEST_CASE("A trade is the market maker's when the market maker's order started i
     duel.step_with(1, {limit(mm::Side::Sell, 99.0, 2)}); // the other takes
 
     REQUIRE(recorder.trades.size() == 2);
-    CHECK(recorder.trades[0].aggressor_is_mm);
-    CHECK_FALSE(recorder.trades[1].aggressor_is_mm);
+    CHECK(recorder.trades[0].parties.aggressive() == 0);
+    CHECK(recorder.trades[1].parties.aggressive() == 1);
 }
 
 // -------------------------------------------------------- what an agent is shown
@@ -1387,4 +1380,81 @@ TEST_CASE("A trade is shown with the side of the order that started it, buy or s
     REQUIRE(duel.script[0]->last_trades[0].size() == 1);
     CHECK(duel.script[0]->last_trades[0][0].aggressor == mm::Side::Sell);
     CHECK(duel.script[0]->last_trades[0][0].price == 99.0);
+}
+
+// ------------------------------------------------------ what observers are told
+
+namespace {
+
+/// Keeps the refusals a run notifies, in order.
+struct RejectLog final : sim::SimulationObserver {
+    struct Entry {
+        sim::AgentId agent;
+        mms::agents::Action action;
+        mms::agents::RejectReason reason;
+    };
+
+    std::vector<Entry> entries;
+    std::vector<std::string> sequence;
+
+    void on_tick_start(double /*time*/) override { sequence.emplace_back("start"); }
+
+    void on_reject(sim::AgentId agent,
+                   const mms::agents::Action& action,
+                   mms::agents::RejectReason reason) override {
+        sequence.emplace_back("reject");
+        entries.push_back({.agent = agent, .action = action, .reason = reason});
+    }
+
+    void on_tick_end(double /*time*/) override { sequence.emplace_back("end"); }
+};
+
+} // namespace
+
+TEST_CASE("Observers are told what the gateway refuses, with the agent and the reason",
+          "[simulation][tick_loop][observers]") {
+    Duel duel;
+    RejectLog log;
+    duel.loop.add_observer(log);
+
+    duel.step_with(1, {limit(mm::Side::Buy, 99.0, 0), limit(mm::Side::Buy, 99.0, 3)});
+
+    REQUIRE(log.entries.size() == 1);
+    CHECK(log.entries[0].agent == 1);
+    CHECK(log.entries[0].reason == mms::agents::RejectReason::InvalidOrder);
+    CHECK(std::get<mms::agents::SubmitLimit>(log.entries[0].action).quantity == 0);
+    // And it happens during the tick, where the agent acted.
+    CHECK(log.sequence == std::vector<std::string>{"start", "reject", "end"});
+    // The other order, a good one, went through.
+    CHECK(duel.world.agent(1).orders().size() == 1);
+}
+
+TEST_CASE("Nothing is notified when nothing is refused", "[simulation][tick_loop][observers]") {
+    Duel duel;
+    RejectLog log;
+    duel.loop.add_observer(log);
+
+    duel.step_with(1, {limit(mm::Side::Buy, 99.0, 3)});
+
+    CHECK(log.entries.empty());
+}
+
+TEST_CASE("The quotes of any agent can be read, and each agent has its own",
+          "[simulation][tick_loop][observers]") {
+    Duel duel;
+    duel.step_with(1, {limit(mm::Side::Buy, 99.0, 3), limit(mm::Side::Sell, 101.0, 5)});
+
+    const mm::LiveQuoteSet theirs = duel.loop.quotes_of(1);
+    REQUIRE(theirs.size() == 1);
+    REQUIRE(theirs[0].bid.has_value());
+    CHECK(theirs[0].bid->quote.price == 99.0);
+    CHECK(theirs[0].bid->quote.quantity == 3);
+    REQUIRE(theirs[0].ask.has_value());
+    CHECK(theirs[0].ask->quote.quantity == 5);
+
+    const mm::LiveQuoteSet mine = duel.loop.quotes_of(0);
+    CHECK_FALSE(mine[0].bid.has_value());
+    CHECK_FALSE(mine[0].ask.has_value());
+
+    CHECK_THROWS_AS(duel.loop.quotes_of(2), std::out_of_range);
 }

@@ -144,8 +144,7 @@ private:
 
 TickLoop::TickLoop(World& world, const SimulationConfig& config)
     : world_(world), dt_(validated_dt(config.dt)), history_(history_for(config)),
-      book_depth_(static_cast<std::size_t>(std::max(config.book_depth, 1))),
-      quotes_changed_(world.asset_count(), false) {
+      book_depth_(static_cast<std::size_t>(std::max(config.book_depth, 1))) {
     if (config.assets.size() != world.asset_count()) {
         reject("the config does not match the number of assets of the world");
     }
@@ -155,10 +154,6 @@ TickLoop::TickLoop(World& world, const SimulationConfig& config)
         shown_signal_.push_back(gets_signal(behavior));
         shown_factors_.push_back(std::holds_alternative<agents::FactorTraderSpec>(behavior));
         seen_.push_back(0);
-        if (!observed_maker_.has_value() &&
-            std::holds_alternative<agents::MarketMakerSpec>(behavior)) {
-            observed_maker_ = i;
-        }
     }
 
     for (mm::AssetId asset = 0; asset < world.asset_count(); ++asset) {
@@ -207,7 +202,6 @@ void TickLoop::step() {
         execute(event);
     }
 
-    notify_quote_changes();
     for (SimulationObserver* observer : observers_) {
         observer->on_tick_end(time_);
     }
@@ -253,6 +247,11 @@ void TickLoop::run_agents() {
         const std::span<const agents::AssetView> markets =
             history_.view(time_ - delay, shown_signal_[agent], seen_[agent]);
         const ActResult result = runtime.act(ticks_, time_, markets);
+        for (const Refusal& refusal : result.refused) {
+            for (SimulationObserver* observer : observers_) {
+                observer->on_reject(agent, refusal.action, refusal.reason);
+            }
+        }
         for (const Scheduled& scheduled : result.scheduled) {
             std::visit(
                 [&](const auto& event) { world_.event_queue().schedule(scheduled.due, event); },
@@ -293,7 +292,6 @@ void TickLoop::execute_submit(const SubmitArrival& arrival) {
         // closed already and this does nothing).
         static_cast<void>(runtime.on_done(arrival.ticket));
     }
-    touch(arrival.agent, sent.asset);
 }
 
 void TickLoop::execute_cancel(const CancelArrival& arrival) {
@@ -318,10 +316,13 @@ void TickLoop::on_trade(mm::AssetId asset, const mm::Trade& trade) {
                        agents::TradePrint{.price = trade.price,
                                           .quantity = trade.quantity,
                                           .aggressor = submission_.value().side});
-    const bool started_by_maker = submission_.has_value() && observed_maker_ == submission_->agent;
-    const auto settle = [&](mm::OrderId id, mm::Side side) {
-        // Every order in a book belongs to an agent: no owner would be a bug, and throws.
-        const OrderOwner owner = owner_of(asset, id).value();
+    // Every order in a book belongs to an agent: no owner would be a bug, and throws. Both are
+    // looked up before anything is settled, which can forget an order that filled in full.
+    const OrderOwner buyer = owner_of(asset, trade.buy_order_id).value();
+    const OrderOwner seller = owner_of(asset, trade.sell_order_id).value();
+    const TradeParties parties{
+        .buyer = buyer.agent, .seller = seller.agent, .aggressor = submission_.value().side};
+    const auto settle = [&](const OrderOwner& owner, mm::OrderId id, mm::Side side) {
         AgentRuntime& runtime = world_.agent(owner.agent);
         const bool aggressor = !registry_.find(asset, id).has_value();
         runtime.on_fill(owner.ticket,
@@ -336,13 +337,12 @@ void TickLoop::on_trade(mm::AssetId asset, const mm::Trade& trade) {
         } else if (!runtime.orders().ticket_of(asset, id).has_value()) {
             registry_.remove(asset, id); // filled in full
         }
-        touch(owner.agent, asset);
     };
-    settle(trade.buy_order_id, mm::Side::Buy);
-    settle(trade.sell_order_id, mm::Side::Sell);
+    settle(buyer, trade.buy_order_id, mm::Side::Buy);
+    settle(seller, trade.sell_order_id, mm::Side::Sell);
 
     for (SimulationObserver* observer : observers_) {
-        observer->on_trade(asset, trade, started_by_maker);
+        observer->on_trade(asset, trade, parties);
     }
 }
 
@@ -353,21 +353,11 @@ void TickLoop::on_order_cancelled(mm::AssetId asset, mm::OrderId id) {
     }
     static_cast<void>(world_.agent(owner->agent).on_done(owner->ticket));
     registry_.remove(asset, id);
-    touch(owner->agent, asset);
 }
 
-void TickLoop::touch(AgentId agent, mm::AssetId asset) {
-    if (observed_maker_ == agent) {
-        quotes_changed_[asset] = true;
-    }
-}
-
-mm::LiveQuoteSet TickLoop::live_quotes() const {
+mm::LiveQuoteSet TickLoop::quotes_of(AgentId id) const {
     mm::LiveQuoteSet live(world_.asset_count());
-    if (!observed_maker_.has_value()) {
-        return live;
-    }
-    for (const agents::OpenOrder& order : world_.agent(*observed_maker_).orders().orders()) {
+    for (const agents::OpenOrder& order : world_.agent(id).orders().orders()) {
         if (order.state == agents::OrderState::Submitting) {
             continue;
         }
@@ -380,27 +370,6 @@ mm::LiveQuoteSet TickLoop::live_quotes() const {
         }
     }
     return live;
-}
-
-void TickLoop::notify_quote_changes() {
-    const mm::LiveQuoteSet live = live_quotes();
-    for (mm::AssetId asset = 0; asset < world_.asset_count(); ++asset) {
-        if (!quotes_changed_[asset]) {
-            continue;
-        }
-        quotes_changed_[asset] = false;
-        const mm::AssetLiveQuotes& resting = live[asset];
-        mm::AssetQuotes quotes;
-        if (resting.bid.has_value()) {
-            quotes.bid = resting.bid->quote;
-        }
-        if (resting.ask.has_value()) {
-            quotes.ask = resting.ask->quote;
-        }
-        for (SimulationObserver* observer : observers_) {
-            observer->on_quote(asset, quotes);
-        }
-    }
 }
 
 } // namespace mms::simulation
