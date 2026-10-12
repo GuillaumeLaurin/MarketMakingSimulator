@@ -18,6 +18,17 @@ namespace {
 /// Slack on the decision clock, relative to the period.
 constexpr double clock_slack = 1e-9;
 
+/// `due`, or later if a cancel of the same asset and side is still to arrive by then.
+double after_cancels(const ActResult& result, mm::AssetId asset, mm::Side side, double due) {
+    for (const Scheduled& scheduled : result.scheduled) {
+        const auto* cancel = std::get_if<CancelArrival>(&scheduled.event);
+        if (cancel != nullptr && cancel->asset == asset && cancel->side == side) {
+            due = std::max(due, scheduled.due);
+        }
+    }
+    return due;
+}
+
 } // namespace
 
 AgentRuntime::AgentRuntime(AgentId id,
@@ -26,13 +37,7 @@ AgentRuntime::AgentRuntime(AgentId id,
                            const std::vector<mm::LedgerAsset>& assets,
                            math::rng::RngEngine decision,
                            math::rng::RngEngine latency)
-    : AgentRuntime(id,
-                   spec,
-                   rules,
-                   assets,
-                   std::move(decision),
-                   std::move(latency),
-                   agents::make_agent(spec.behavior)) {
+    : AgentRuntime(id, spec, rules, assets, decision, latency, agents::make_agent(spec.behavior)) {
 }
 
 AgentRuntime::AgentRuntime(AgentId id,
@@ -43,7 +48,7 @@ AgentRuntime::AgentRuntime(AgentId id,
                            math::rng::RngEngine latency,
                            std::unique_ptr<agents::Agent> agent)
     : id_(id), spec_(spec), agent_(std::move(agent)), account_(spec.profile, rules, assets),
-      decision_(std::move(decision)), latency_(std::move(latency)) {
+      decision_(decision), latency_(latency) {
     if (agent_ == nullptr) {
         throw std::invalid_argument("AgentRuntime: there is no agent");
     }
@@ -95,17 +100,23 @@ AgentRuntime::act(std::int64_t tick, double time, std::span<const agents::AssetV
 
 void AgentRuntime::send(const agents::Action& action, double now, double delay, ActResult& result) {
     if (const auto* cancel = std::get_if<agents::Cancel>(&action)) {
-        if (orders_.request_cancel(cancel->asset, cancel->id)) {
-            result.scheduled.push_back(
-                {now + delay,
-                 CancelArrival{.agent = id_, .asset = cancel->asset, .id = cancel->id}});
+        const auto listed =
+            std::ranges::find_if(orders_.orders(), [&](const agents::OpenOrder& order) {
+                return order.asset == cancel->asset && order.id == cancel->id;
+            });
+        if (listed != orders_.orders().end() && orders_.request_cancel(cancel->asset, cancel->id)) {
+            result.scheduled.push_back({.due = now + delay,
+                                        .event = CancelArrival{.agent = id_,
+                                                               .asset = cancel->asset,
+                                                               .id = cancel->id,
+                                                               .side = listed->side}});
         }
         return;
     }
 
     if (const std::optional<agents::RejectReason> reason = account_.check(action)) {
         agent_->on_reject(action, *reason);
-        result.refused.push_back({action, *reason});
+        result.refused.push_back({.action = action, .reason = *reason});
         return;
     }
 
@@ -113,14 +124,16 @@ void AgentRuntime::send(const agents::Action& action, double now, double delay, 
         const Ticket ticket = account_.accept(*limit);
         orders_.on_accepted(ticket, limit->asset, limit->side, limit->price, limit->quantity);
         result.scheduled.push_back(
-            {now + delay, SubmitArrival{.agent = id_, .ticket = ticket, .order = *limit}});
+            {.due = after_cancels(result, limit->asset, limit->side, now + delay),
+             .event = SubmitArrival{.agent = id_, .ticket = ticket, .order = *limit}});
     } else {
         const auto& market = std::get<agents::SubmitMarket>(action);
         const Ticket ticket = account_.accept(market);
         // A market order has no price: the list shows it as 0.
         orders_.on_accepted(ticket, market.asset, market.side, 0.0, market.quantity);
         result.scheduled.push_back(
-            {now + delay, SubmitArrival{.agent = id_, .ticket = ticket, .order = market}});
+            {.due = after_cancels(result, market.asset, market.side, now + delay),
+             .event = SubmitArrival{.agent = id_, .ticket = ticket, .order = market}});
     }
 }
 

@@ -20,6 +20,9 @@
 ///   on_done()      it ended without trading what was left: cancelled, or an immediate
 ///                  order that did not rest
 ///
+/// An order never reaches the exchange before a cancel asked for earlier in the same act()
+/// on the same asset and side: a replacement does not overtake the quote it replaces.
+///
 /// Randomness is drawn the same way whatever happens: one delay per action asked for, before
 /// the action is judged, so that a refusal never shifts a later draw.
 
@@ -59,6 +62,7 @@ struct CancelArrival {
     AgentId agent;
     mm::AssetId asset;
     mm::OrderId id;
+    mm::Side side; ///< the side of the order it cancels
 };
 
 using AgentEvent = std::variant<SubmitArrival, CancelArrival>;
@@ -133,6 +137,9 @@ public:
     /// Throws what the agent throws.
     [[nodiscard]] ActResult
     act(std::int64_t tick, double time, std::span<const agents::AssetView> markets);
+
+    /// The mid of `asset` moved: marks the account, and with it the collateral.
+    void on_mark(mm::AssetId asset, mm::Price mid) { account_.on_mark(asset, mid); }
 
     /// The order of `ticket` reached the exchange and rests under `id`. Throws
     /// std::out_of_range for an unknown ticket.

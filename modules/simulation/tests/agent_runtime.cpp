@@ -25,6 +25,8 @@
 #include <simulation/latency.hpp>
 #include <simulation/size_spec.hpp>
 
+#include "scripted.hpp"
+
 namespace sim = mms::simulation;
 namespace agents = mms::agents;
 namespace math = mms::math;
@@ -34,48 +36,7 @@ namespace {
 
 using mm::Side;
 
-/// Asks for what it has been given and keeps what it saw.
-class Scripted final : public agents::Agent {
-public:
-    void act(const agents::AgentView& view,
-             math::rng::RngEngine& rng,
-             std::vector<agents::Action>& out) override {
-        ++acts;
-        last_tick = view.tick;
-        last_time = view.time;
-        last_elapsed = view.elapsed;
-        last_cash = view.account.cash;
-        last_buying_power = view.account.buying_power;
-        last_positions.assign(view.account.positions.begin(), view.account.positions.end());
-        last_orders.assign(view.open_orders.begin(), view.open_orders.end());
-        last_factors.assign(view.factors.begin(), view.factors.end());
-        last_asset_count = view.assets.size();
-        draws.push_back(rng());
-        out = to_ask;
-    }
-
-    void on_fill(const agents::Fill& fill) override { fills.push_back(fill); }
-
-    void on_reject(const agents::Action& action, agents::RejectReason reason) override {
-        rejects.emplace_back(action, reason);
-    }
-
-    std::vector<agents::Action> to_ask;
-
-    int acts = 0;
-    std::int64_t last_tick = 0;
-    double last_time = 0.0;
-    double last_elapsed = 0.0;
-    double last_cash = 0.0;
-    double last_buying_power = 0.0;
-    std::vector<mm::Quantity> last_positions;
-    std::vector<agents::OpenOrder> last_orders;
-    std::vector<double> last_factors;
-    std::size_t last_asset_count = 0;
-    std::vector<std::uint64_t> draws;
-    std::vector<agents::Fill> fills;
-    std::vector<std::pair<agents::Action, agents::RejectReason>> rejects;
-};
+using sim::tests::Scripted;
 
 const std::vector<mm::LedgerAsset> two_assets = {{.initial_mid = 100.0}, {.initial_mid = 50.0}};
 
@@ -545,4 +506,115 @@ TEST_CASE("A process with no factors adds nothing and the agent sees none",
     static_cast<void>(rig.act(1, 1.0));
 
     CHECK(rig.script->last_factors.empty());
+}
+
+TEST_CASE("A cancel names the side of the order it cancels", "[simulation][agent_runtime]") {
+    // A sale needs the right to short.
+    sim::AgentSpec spec = spec_with({});
+    spec.profile.can_short = true;
+    auto agent = std::make_unique<Scripted>();
+    Scripted* script = agent.get();
+    sim::AgentRuntime runtime(0,
+                              spec,
+                              sim::AccountRules{},
+                              two_assets,
+                              stream(math::rng::Subsystem::Agent),
+                              stream(math::rng::Subsystem::AgentLatency),
+                              std::move(agent));
+    const std::vector<agents::AssetView> markets(2);
+    script->to_ask = {
+        agents::SubmitLimit{.asset = 1, .side = Side::Sell, .price = 55.0, .quantity = 3}};
+    const sim::SubmitArrival arrival = as_submit(runtime.act(1, 1.0, markets).scheduled[0]);
+    runtime.on_arrived(arrival.ticket, mm::OrderId{5});
+
+    script->to_ask = {agents::Cancel{.asset = 1, .id = mm::OrderId{5}}};
+    const sim::ActResult result = runtime.act(2, 2.0, markets);
+
+    REQUIRE(result.scheduled.size() == 1);
+    CHECK(std::get<sim::CancelArrival>(result.scheduled[0].event).side == Side::Sell);
+}
+
+TEST_CASE("A replacement never reaches the exchange before the cancel of the order it replaces",
+          "[simulation][agent_runtime]") {
+    // The cancel is slow, the new order would be fast: it is held back to the cancel's time.
+    // Over many seeds with a wide delay the draws are in either order.
+    int held_back = 0;
+    int on_its_own = 0;
+    for (std::uint64_t seed = 1; seed <= 60; ++seed) {
+        Rig rig({.order_delay = sim::UniformDelaySpec{.min = 0.0, .max = 10.0}}, 1000.0, seed);
+        rig.script->to_ask = {buy(0, 10.0, 5)};
+        const sim::SubmitArrival old_order = as_submit(rig.act(1, 0.0).scheduled[0]);
+        rig.runtime->on_arrived(old_order.ticket, mm::OrderId{9});
+
+        rig.script->to_ask = {agents::Cancel{.asset = 0, .id = mm::OrderId{9}}, buy(0, 11.0, 5)};
+        const sim::ActResult result = rig.act(2, 100.0);
+
+        REQUIRE(result.scheduled.size() == 2);
+        const double cancel_due = result.scheduled[0].due;
+        const double submit_due = result.scheduled[1].due;
+        CHECK(submit_due >= cancel_due);
+        if (submit_due == cancel_due) {
+            ++held_back;
+        } else {
+            ++on_its_own;
+        }
+    }
+    CHECK(held_back > 0);  // the delay of the new order really was drawn shorter at times
+    CHECK(on_its_own > 0); // and a longer one is left as it was drawn
+}
+
+TEST_CASE("Only a cancel on the same asset and side holds a new order back",
+          "[simulation][agent_runtime]") {
+    // Same seed, same draws: the only difference is the asset (or the side) of the new order.
+    const sim::AgentTiming timing{.order_delay = sim::UniformDelaySpec{.min = 0.0, .max = 10.0}};
+    int different_asset_earlier = 0;
+    for (std::uint64_t seed = 1; seed <= 60; ++seed) {
+        Rig rig(timing, 1000.0, seed);
+        rig.script->to_ask = {buy(0, 10.0, 5)};
+        const sim::SubmitArrival old_order = as_submit(rig.act(1, 0.0).scheduled[0]);
+        rig.runtime->on_arrived(old_order.ticket, mm::OrderId{9});
+
+        rig.script->to_ask = {agents::Cancel{.asset = 0, .id = mm::OrderId{9}}, buy(1, 10.0, 5)};
+        const sim::ActResult result = rig.act(2, 100.0);
+
+        REQUIRE(result.scheduled.size() == 2);
+        if (result.scheduled[1].due < result.scheduled[0].due) {
+            ++different_asset_earlier;
+        }
+    }
+    CHECK(different_asset_earlier > 0);
+}
+
+TEST_CASE("A cancel on one side does not hold back a new order on the other side",
+          "[simulation][agent_runtime]") {
+    int other_side_earlier = 0;
+    for (std::uint64_t seed = 1; seed <= 60; ++seed) {
+        sim::AgentSpec spec =
+            spec_with({.order_delay = sim::UniformDelaySpec{.min = 0.0, .max = 10.0}});
+        spec.profile.can_short = true;
+        auto agent = std::make_unique<Scripted>();
+        Scripted* script = agent.get();
+        sim::AgentRuntime runtime(0,
+                                  spec,
+                                  sim::AccountRules{},
+                                  two_assets,
+                                  stream(math::rng::Subsystem::Agent, seed),
+                                  stream(math::rng::Subsystem::AgentLatency, seed),
+                                  std::move(agent));
+        const std::vector<agents::AssetView> markets(2);
+        script->to_ask = {buy(0, 10.0, 5)};
+        const sim::SubmitArrival old_bid = as_submit(runtime.act(1, 0.0, markets).scheduled[0]);
+        runtime.on_arrived(old_bid.ticket, mm::OrderId{9});
+
+        script->to_ask = {
+            agents::Cancel{.asset = 0, .id = mm::OrderId{9}},
+            agents::SubmitLimit{.asset = 0, .side = Side::Sell, .price = 12.0, .quantity = 5}};
+        const sim::ActResult result = runtime.act(2, 100.0, markets);
+
+        REQUIRE(result.scheduled.size() == 2);
+        if (result.scheduled[1].due < result.scheduled[0].due) {
+            ++other_side_earlier;
+        }
+    }
+    CHECK(other_side_earlier > 0);
 }

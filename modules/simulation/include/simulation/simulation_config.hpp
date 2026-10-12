@@ -5,14 +5,11 @@
 /// Everything one run of the simulation needs. Plain data, no invariant
 /// enforced here: World validates sizes and values against each other when
 /// it actually builds the PriceProcess, the CovarianceMatrix and the
-/// strategy, the same way every spec and config in this zone defers
+/// agents, the same way every spec and config in this zone defers
 /// validation to wherever the context to check it against exists.
 
 #include <cstdint>
 #include <vector>
-
-#include <mm/strategy_config.hpp>
-#include <mm/tick.hpp>
 
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
@@ -26,8 +23,7 @@ namespace mms::simulation {
 
 struct SimulationConfig {
     /// One entry per asset, in AssetId order. Its size is the asset count
-    /// every other per-asset vector (correlation's dimension, strategy's own
-    /// per-asset fields) must match.
+    /// that the correlation matrix and a market maker strategy must match.
     std::vector<AssetSpec> assets;
 
     /// N x N correlation of the true prices; symmetric, positive definite.
@@ -36,21 +32,9 @@ struct SimulationConfig {
     /// Which price-process mechanism drives the whole basket
     PriceProcessSpec process;
 
-    /// The market maker's own quoting policy. Stays in its own
-    /// parallel-vector form (mm's convention); World assembles its strategy
-    /// from this and feeds it the live market data each tick.
-    mm::StrategyConfig strategy;
+    LatencyConfig latency = {};
 
-    LatencyConfig latency;
-
-    /// A resting quote is replaced only once its price has moved by at least
-    /// this many ticks (or its size changed): mm::plan_requote's threshold.
-    /// 0 replaces every quote at every tick. Validated where it is used
-    /// (plan_requote throws on a negative value), not here.
-    mm::Ticks requote_threshold_ticks = 1;
-
-    /// The agents of the run, in the order they act. Not used by the loop yet: it
-    /// still runs the market maker of `strategy` alone.
+    /// The agents of the run, in the order they act.
     std::vector<AgentSpec> agents = {};
 
     /// The rules of the exchange that apply to every account alike.

@@ -18,6 +18,7 @@
 /// the only one quoting. The state of the strategy's volatility estimators is not saved by
 /// save() yet, so a run resumed from a saved agent restarts them.
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -45,6 +46,9 @@ public:
     /// Builds the strategy from `spec`. Throws std::invalid_argument for a negative
     /// threshold, and for anything mm::make_strategy rejects.
     explicit MarketMakerAgent(const MarketMakerSpec& spec);
+
+    /// How many assets the strategy quotes.
+    [[nodiscard]] std::size_t asset_count() const noexcept { return strategy_->asset_count(); }
 
     /// Throws std::invalid_argument when the view does not have one asset and one position
     /// per asset of the strategy, when an asset has no signal, or when view.elapsed is not

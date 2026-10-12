@@ -12,6 +12,8 @@
 
 #include <simulation/simulation.hpp>
 
+#include "maker.hpp"
+
 namespace {
 
 struct TickCounter final : mms::simulation::SimulationObserver {
@@ -43,19 +45,17 @@ TEST_CASE("<simulation/simulation.hpp> exposes the whole simulation module",
         .assets = {asset},
         .correlation = math::Matrix::Identity(1, 1),
         .process = RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
-        .strategy = mm::StrategyConfig{.gamma = 2.0,
-                                       .k = math::Vector::Constant(1, 1.0),
-                                       .correlation = math::Matrix::Identity(1, 1),
-                                       .estimators = {mm::ConstantSpec{.sigma = 0.2}},
-                                       .horizon = mm::ConstantHorizon{.tau = 1.0},
-                                       .quote_sizes = {10},
-                                       .tick_sizes = {0.01},
-                                       .limits = {.max_abs_position = {1000},
-                                                  .max_portfolio_risk = std::nullopt},
-                                       .min_samples = 0},
-        .latency = {.quote_delay = ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = ConstantDelaySpec{.delay = 0.0}},
-        .requote_threshold_ticks = 1,
+        .latency = {.adverse_flow_delay = ConstantDelaySpec{.delay = 0.0}},
+        .agents = {tests::maker_agent(mm::StrategyConfig{
+            .gamma = 2.0,
+            .k = math::Vector::Constant(1, 1.0),
+            .correlation = math::Matrix::Identity(1, 1),
+            .estimators = {mm::ConstantSpec{.sigma = 0.2}},
+            .horizon = mm::ConstantHorizon{.tau = 1.0},
+            .quote_sizes = {10},
+            .tick_sizes = {0.01},
+            .limits = {.max_abs_position = {1000}, .max_portfolio_risk = std::nullopt},
+            .min_samples = 0})},
         .master_seed = math::rng::Seed{5},
         .dt = 1.0,
         .tick_count = 20};
@@ -72,7 +72,7 @@ TEST_CASE("<simulation/simulation.hpp> exposes the whole simulation module",
     }
 
     // latency.hpp: a constant delay is validated and drawn as itself.
-    const DelaySpec delay = config.latency.quote_delay;
+    const DelaySpec delay = config.latency.adverse_flow_delay;
     validate_delay_spec(delay);
     CHECK(draw_delay(delay, world.latency_engine(0)) == 0.0);
 

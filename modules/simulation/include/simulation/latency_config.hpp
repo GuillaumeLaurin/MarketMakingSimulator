@@ -2,18 +2,16 @@
 #define MMS_SIMULATION_LATENCY_CONFIG_HPP
 
 /// \file
-/// How long messages take to reach the exchange. Two separate delay
-/// distributions: one for the market maker's own quote submits and cancels,
-/// one for adverse flow, which is often faster (that speed is exactly what
-/// lets it beat the market maker to a stale quote).
+/// How long adverse flow takes to reach the exchange. It is often faster than the market
+/// maker (that speed is exactly what lets it beat the market maker to a stale quote). The
+/// delays of the agents are in their own AgentTiming.
 
 #include <simulation/delay_spec.hpp>
 
 namespace mms::simulation {
 
 struct LatencyConfig {
-    DelaySpec quote_delay;
-    DelaySpec adverse_flow_delay;
+    DelaySpec adverse_flow_delay = ConstantDelaySpec{.delay = 0.0};
 };
 
 } // namespace mms::simulation

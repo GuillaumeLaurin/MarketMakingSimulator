@@ -26,6 +26,8 @@
 #include <math/types.hpp>
 #include <simulation/simulation_runner.hpp>
 
+#include "maker.hpp"
+
 namespace sim = mms::simulation;
 namespace math = mms::math;
 namespace mm = mms::mm;
@@ -55,21 +57,18 @@ sim::SimulationConfig make_config(std::int64_t tick_count, std::uint64_t seed = 
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(2, 2),
         .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
-        .strategy =
-            mm::StrategyConfig{
-                .gamma = 2.0,
-                .k = math::Vector::Constant(2, 1.0),
-                .correlation = math::Matrix::Identity(2, 2),
-                .estimators = std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
-                .horizon = mm::ConstantHorizon{.tau = 1.0},
-                .quote_sizes = std::vector<mm::Quantity>(2, 10),
-                .tick_sizes = std::vector<mm::Price>(2, 0.01),
-                .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
-                           .max_portfolio_risk = std::nullopt},
-                .min_samples = 0},
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .requote_threshold_ticks = 1,
+        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .agents = {sim::tests::maker_agent(mm::StrategyConfig{
+            .gamma = 2.0,
+            .k = math::Vector::Constant(2, 1.0),
+            .correlation = math::Matrix::Identity(2, 2),
+            .estimators = std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
+            .horizon = mm::ConstantHorizon{.tau = 1.0},
+            .quote_sizes = std::vector<mm::Quantity>(2, 10),
+            .tick_sizes = std::vector<mm::Price>(2, 0.01),
+            .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
+                       .max_portfolio_risk = std::nullopt},
+            .min_samples = 0})},
         .master_seed = math::rng::Seed{seed},
         .dt = 1.0,
         .tick_count = tick_count};
@@ -358,4 +357,31 @@ TEST_CASE("A run under the default geometric dynamics completes with sane result
     CHECK(results.assets.size() == 2);
     CHECK(std::isfinite(results.portfolio.final_breakdown.total()));
     CHECK(runner.world().price_process().prices().minCoeff() > 0.0);
+}
+
+TEST_CASE("A run with no agent has nothing to report on", "[simulation][runner]") {
+    sim::SimulationConfig config = make_config(5);
+    config.agents.clear();
+
+    CHECK_THROWS_AS(sim::SimulationRunner(config), std::invalid_argument);
+}
+
+TEST_CASE("The results describe the first market maker, whatever comes before it",
+          "[simulation][runner]") {
+    sim::SimulationConfig config = make_config(20);
+    config.agents.insert(config.agents.begin(),
+                         sim::AgentSpec{.profile = {.name = "bystander", .initial_cash = 0.0},
+                                        .timing = {},
+                                        .behavior = mms::agents::InformedFlowSpec{
+                                            .lambda = 1.0,
+                                            .direction_correlation = 0.0,
+                                            .size = sim::UniformIntSpec{.min = 1, .max = 2}}});
+
+    sim::SimulationRunner runner(config);
+    runner.run();
+
+    REQUIRE(runner.world().agent_count() == 2);
+    CHECK(runner.results().portfolio.final_breakdown.total() ==
+          runner.world().agent(1).account().ledger().portfolio().total());
+    CHECK(runner.results().portfolio.final_breakdown.total() != 0.0);
 }

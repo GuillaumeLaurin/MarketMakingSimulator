@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <stdexcept>
 
+#include <agents/market_maker.hpp>
+
 #include <simulation/simulation_runner.hpp>
 
 #include "simulation/results.hpp"
@@ -21,11 +23,25 @@ std::int64_t validated_tick_count(const SimulationConfig& config) {
     return config.tick_count;
 }
 
+// The results still describe one agent: the first market maker, or failing that the first
+// agent. Per-agent results come later.
+const mm::PnlLedger& reported_ledger(const World& world) {
+    for (AgentId id = 0; id < world.agent_count(); ++id) {
+        if (dynamic_cast<const agents::MarketMakerAgent*>(&world.agent(id).agent()) != nullptr) {
+            return world.agent(id).account().ledger();
+        }
+    }
+    if (world.agent_count() == 0) {
+        throw std::invalid_argument("SimulationRunner: there is no agent to report on");
+    }
+    return world.agent(0).account().ledger();
+}
+
 } // namespace
 
 SimulationRunner::SimulationRunner(const SimulationConfig& config)
     : tick_count_(validated_tick_count(config)), world_(config), loop_(world_, config),
-      observer_(world_.pnl_ledger()) {
+      observer_(reported_ledger(world_)) {
     // Registered here, before any caller can add its own: the built-in
     // observer always sees a tick first.
     loop_.add_observer(observer_);

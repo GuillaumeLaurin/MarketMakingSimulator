@@ -1,7 +1,6 @@
 /// \file
 /// Implementation of TickLoop (<simulation/tick_loop.hpp>).
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
@@ -10,15 +9,14 @@
 #include <utility>
 #include <variant>
 
+#include <agents/agent.hpp>
 #include <mm/quote.hpp>
-#include <mm/quoting_strategy.hpp>
 
 #include <simulation/adverse_flow.hpp>
 #include <simulation/latency.hpp>
 #include <simulation/tick_loop.hpp>
 
 #include "math/rng/engine.hpp"
-#include "mm/requote.hpp"
 #include "mm/types.hpp"
 #include "simulation/latency_config.hpp"
 #include "simulation/simulation_config.hpp"
@@ -33,47 +31,58 @@ namespace {
     throw std::invalid_argument(std::string("TickLoop: ") + message);
 }
 
-constexpr std::size_t side_index(mm::Side side) noexcept {
-    return side == mm::Side::Buy ? 0U : 1U;
+/// Does this kind of agent get the true price as the signal of its view?
+bool gets_signal(const agents::AgentBehavior& behavior) {
+    return std::holds_alternative<agents::MarketMakerSpec>(behavior) ||
+           std::holds_alternative<agents::InformedFlowSpec>(behavior);
 }
 
-std::optional<mm::LiveQuote>& live_slot(mm::LiveQuoteSet& live, mm::AssetId asset, mm::Side side) {
-    return side == mm::Side::Buy ? live[asset].bid : live[asset].ask;
-}
+/// What the engine needs to be given for one submit, and what the loop needs to know of it.
+struct Sent {
+    mm::AssetId asset = 0;
+    mm::Side side = mm::Side::Buy;
+    mm::Quantity quantity = 0;
+    mm::Order order;
+    bool can_rest = false;
+};
 
-/// The side whose live quote carries `id`. A cancel in a plan always names a
-/// quote that was live when the plan was made.
-mm::Side side_of(const mm::LiveQuoteSet& live, const mm::CancelRequest& cancel) {
-    const mm::AssetLiveQuotes& quotes = live[cancel.asset];
-    if (quotes.bid.has_value() && quotes.bid->id == cancel.id) {
-        return mm::Side::Buy;
-    }
-    if (quotes.ask.has_value() && quotes.ask->id == cancel.id) {
-        return mm::Side::Sell;
-    }
-    throw std::logic_error("TickLoop: a planned cancel names a quote that is not live");
-}
-
-mm::AssetQuotes as_quotes(const mm::AssetLiveQuotes& live) {
-    mm::AssetQuotes quotes;
-    if (live.bid.has_value()) {
-        quotes.bid = live.bid->quote;
-    }
-    if (live.ask.has_value()) {
-        quotes.ask = live.ask->quote;
-    }
-    return quotes;
+Sent describe(const SubmitArrival& arrival) {
+    return std::visit(
+        [](const auto& request) -> Sent {
+            using Request = std::decay_t<decltype(request)>;
+            if constexpr (std::is_same_v<Request, agents::SubmitLimit>) {
+                return Sent{.asset = request.asset,
+                            .side = request.side,
+                            .quantity = request.quantity,
+                            .order = mm::LimitOrder{.side = request.side,
+                                                    .price = request.price,
+                                                    .quantity = request.quantity,
+                                                    .time_in_force = request.time_in_force},
+                            .can_rest = request.time_in_force == mm::TimeInForce::GTC};
+            } else {
+                return Sent{.asset = request.asset,
+                            .side = request.side,
+                            .quantity = request.quantity,
+                            .order = mm::MarketOrder{.side = request.side,
+                                                     .quantity = request.quantity,
+                                                     .time_in_force = request.time_in_force},
+                            .can_rest = false};
+            }
+        },
+        arrival.order);
 }
 
 } // namespace
 
-/// One per asset: turns a trade in that asset's book into the loop's own
-/// bookkeeping (ledger, live quotes, observers).
+/// One per asset: turns what happens in that asset's book into the loop's own bookkeeping
+/// (accounts, owners, observers).
 class TickLoop::EngineObserver final : public mm::MatchingEngineObserver {
 public:
     EngineObserver(TickLoop& loop, mm::AssetId asset) : loop_(loop), asset_(asset) {}
 
     void on_trade(const mm::Trade& trade) override { loop_.on_trade(asset_, trade); }
+
+    void on_order_cancelled(mm::OrderId id) override { loop_.on_order_cancelled(asset_, id); }
 
 private:
     TickLoop& loop_;
@@ -81,22 +90,25 @@ private:
 };
 
 TickLoop::TickLoop(World& world, const SimulationConfig& config)
-    : world_(world), dt_(config.dt), requote_threshold_(config.requote_threshold_ticks),
-      tick_sizes_(config.strategy.tick_sizes), latency_(config.latency), assets_(config.assets),
-      previous_prices_(world.price_process().prices()), live_(world.asset_count()),
-      in_flight_(world.asset_count(), std::vector<int>(2, 0)),
+    : world_(world), dt_(config.dt), latency_(config.latency), assets_(config.assets),
+      previous_prices_(world.price_process().prices()),
       quotes_changed_(world.asset_count(), false) {
     if (!std::isfinite(dt_) || dt_ <= 0.0) {
         reject("dt must be finite and > 0");
     }
-    if (requote_threshold_ < 0) {
-        reject("the requote threshold must be >= 0");
-    }
-    if (assets_.size() != world.asset_count() || tick_sizes_.size() != world.asset_count()) {
+    if (assets_.size() != world.asset_count()) {
         reject("the config does not match the number of assets of the world");
     }
-    validate_delay_spec(latency_.quote_delay);
     validate_delay_spec(latency_.adverse_flow_delay);
+
+    for (std::size_t i = 0; i < world.agent_count(); ++i) {
+        const agents::AgentBehavior& behavior = config.agents.at(i).behavior;
+        shown_signal_.push_back(gets_signal(behavior));
+        if (!observed_maker_.has_value() &&
+            std::holds_alternative<agents::MarketMakerSpec>(behavior)) {
+            observed_maker_ = i;
+        }
+    }
 
     for (mm::AssetId asset = 0; asset < world.asset_count(); ++asset) {
         // A dry run on a COPY of the engine: it validates the whole
@@ -105,10 +117,23 @@ TickLoop::TickLoop(World& world, const SimulationConfig& config)
         static_cast<void>(generate_adverse_flow(assets_[asset], 0.0, dt_, probe));
 
         engine_observers_.push_back(std::make_unique<EngineObserver>(*this, asset));
-        world.matching_engine(asset).add_observer(*engine_observers_.back());
-    }
+        mm::MatchingEngine& engine = world.matching_engine(asset);
+        engine.add_observer(*engine_observers_.back());
+        engine.set_self_trade_prevention([this, asset](mm::OrderId id) {
+            if (!submission_.has_value()) {
+                return false;
+            }
+            const std::optional<OrderOwner> owner = registry_.find(asset, id);
+            return owner.has_value() && owner->agent == submission_->agent;
+        });
 
-    world.strategy().on_market_data(world.price_process().prices(), dt_);
+        plain_markets_.push_back(agents::AssetView{.bids = {},
+                                                   .asks = {},
+                                                   .recent_trades = {},
+                                                   .signal = std::nullopt,
+                                                   .tick_size = assets_[asset].tick_size});
+    }
+    signal_markets_ = plain_markets_;
 }
 
 TickLoop::~TickLoop() = default;
@@ -128,18 +153,18 @@ void TickLoop::step() {
     const math::Vector prices = world_.price_process().prices();
     for (mm::AssetId asset = 0; asset < world_.asset_count(); ++asset) {
         const mm::Price mid = prices(static_cast<Eigen::Index>(asset));
-        world_.pnl_ledger().on_mark(asset, mid);
+        for (std::size_t agent = 0; agent < world_.agent_count(); ++agent) {
+            world_.agent(agent).on_mark(asset, mid);
+        }
         for (SimulationObserver* observer : observers_) {
             observer->on_mark(asset, mid);
         }
     }
 
-    world_.strategy().on_market_data(prices, dt_);
-
-    // Adverse flow is scheduled BEFORE the quote requests: at equal due
+    // Adverse flow is scheduled BEFORE the agents act: at equal due
     // times it is therefore executed first, against the previous tick's quotes.
     schedule_adverse_flow(prices);
-    schedule_requests(prices);
+    run_agents(prices);
     previous_prices_ = prices;
 
     for (const SimulationEvent& event : world_.event_queue().drain_until(time_)) {
@@ -168,41 +193,23 @@ void TickLoop::schedule_adverse_flow(const math::Vector& prices) {
     }
 }
 
-void TickLoop::schedule_requests(const math::Vector& prices) {
-    const mm::MarketView view =
-        mm::make_market_view(prices, world_.pnl_ledger().quantities(), time_);
-    const mm::QuoteSet desired = world_.strategy().quote(view);
-    const mm::RequotePlan plan = mm::plan_requote(desired, live_, tick_sizes_, requote_threshold_);
-
-    // A side with a request already in flight is left alone, judged on the
-    // counts BEFORE this plan adds its own requests (a replace sends two).
-    const std::vector<std::vector<int>> busy = in_flight_;
-    std::vector<double> cancel_due(2U * world_.asset_count(), 0.0);
-
-    for (const mm::CancelRequest& cancel : plan.cancels) {
-        const mm::Side side = side_of(live_, cancel);
-        if (busy[cancel.asset][side_index(side)] > 0) {
-            continue;
-        }
-        const double due =
-            time_ + draw_delay(latency_.quote_delay, world_.latency_engine(cancel.asset));
-        world_.event_queue().schedule(due, cancel);
-        ++in_flight_[cancel.asset][side_index(side)];
-        cancel_sides_[{cancel.asset, cancel.id}] = side;
-        cancel_due[(2U * cancel.asset) + side_index(side)] = due;
+void TickLoop::run_agents(const math::Vector& prices) {
+    for (std::size_t asset = 0; asset < signal_markets_.size(); ++asset) {
+        signal_markets_[asset].signal = prices(static_cast<Eigen::Index>(asset));
     }
 
-    for (const mm::SubmitRequest& submit : plan.submits) {
-        if (busy[submit.asset][side_index(submit.side)] > 0) {
+    for (std::size_t agent = 0; agent < world_.agent_count(); ++agent) {
+        AgentRuntime& runtime = world_.agent(agent);
+        if (!runtime.due(time_)) {
             continue;
         }
-        // A replacement never overtakes its own cancel: the loop tracks ONE
-        // order per (asset, side), and ties are first in, first out.
-        const double due =
-            std::max(time_ + draw_delay(latency_.quote_delay, world_.latency_engine(submit.asset)),
-                     cancel_due[(2U * submit.asset) + side_index(submit.side)]);
-        world_.event_queue().schedule(due, submit);
-        ++in_flight_[submit.asset][side_index(submit.side)];
+        const ActResult result =
+            runtime.act(ticks_, time_, shown_signal_[agent] ? signal_markets_ : plain_markets_);
+        for (const Scheduled& scheduled : result.scheduled) {
+            std::visit(
+                [&](const auto& event) { world_.event_queue().schedule(scheduled.due, event); },
+                scheduled.event);
+        }
     }
 }
 
@@ -214,93 +221,135 @@ void TickLoop::execute(const SimulationEvent& event) {
             if constexpr (std::is_same_v<Request, AdverseOrder>) {
                 static_cast<void>(
                     world_.matching_engine(request.asset).submit(mm::Order{request.order}));
-            } else if constexpr (std::is_same_v<Request, mm::SubmitRequest>) {
-                std::optional<mm::LiveQuote>& slot = live_slot(live_, request.asset, request.side);
-                if (slot.has_value()) {
-                    throw std::logic_error("TickLoop: a submit reached an occupied side");
-                }
-
-                submitting_side_ = request.side;
-                submit_filled_ = 0;
-                const mm::OrderId id = world_.matching_engine(request.asset)
-                                           .submit(mm::to_limit_order(request.side, request.quote));
-                submitting_side_.reset();
-
-                // What a self-trade took during the submit is no longer resting.
-                const mm::Quantity remaining = request.quote.quantity - submit_filled_;
-                if (remaining > 0) {
-                    slot = mm::LiveQuote{
-                        .id = id,
-                        .quote = mm::Quote{.price = request.quote.price, .quantity = remaining}};
-                }
-                quotes_changed_[request.asset] = true;
-                --in_flight_[request.asset][side_index(request.side)];
+            } else if constexpr (std::is_same_v<Request, SubmitArrival>) {
+                execute_submit(request);
             } else {
-                static_assert(std::is_same_v<Request, mm::CancelRequest>);
-                // False when the quote was filled away before this arrived.
-                static_cast<void>(world_.matching_engine(request.asset).cancel(request.id));
-
-                const mm::Side side = cancel_sides_.at({request.asset, request.id});
-                cancel_sides_.erase({request.asset, request.id});
-                std::optional<mm::LiveQuote>& slot = live_slot(live_, request.asset, side);
-                if (slot.has_value() && slot->id == request.id) {
-                    slot.reset();
-                    quotes_changed_[request.asset] = true;
-                }
-                --in_flight_[request.asset][side_index(side)];
+                static_assert(std::is_same_v<Request, CancelArrival>);
+                execute_cancel(request);
             }
         },
         event);
 }
 
+void TickLoop::execute_submit(const SubmitArrival& arrival) {
+    AgentRuntime& runtime = world_.agent(arrival.agent);
+    const Sent sent = describe(arrival);
+
+    submission_ = Submission{.agent = arrival.agent, .ticket = arrival.ticket, .side = sent.side};
+    const mm::OrderId id = world_.matching_engine(sent.asset).submit(sent.order);
+    const mm::Quantity remaining = sent.quantity - submission_->filled;
+    submission_.reset();
+
+    if (sent.can_rest && remaining > 0) {
+        registry_.add(sent.asset, id, OrderOwner{.agent = arrival.agent, .ticket = arrival.ticket});
+        runtime.on_arrived(arrival.ticket, id);
+    } else {
+        // An immediate order that did not rest, or one that traded in full (then it is
+        // closed already and this does nothing).
+        static_cast<void>(runtime.on_done(arrival.ticket));
+    }
+    touch(arrival.agent, sent.asset);
+}
+
+void TickLoop::execute_cancel(const CancelArrival& arrival) {
+    // False when the order was filled away before this arrived. The engine reports a
+    // cancel it carries out, which is where the order is closed.
+    static_cast<void>(world_.matching_engine(arrival.asset).cancel(arrival.id));
+}
+
+std::optional<OrderOwner>
+TickLoop::owner_of(mm::AssetId asset, mm::OrderId id, mm::Side side) const {
+    if (const std::optional<OrderOwner> owner = registry_.find(asset, id)) {
+        return owner;
+    }
+    // An id that is not recorded is the order being submitted right now, on its side.
+    if (submission_.has_value() && submission_->side == side) {
+        return OrderOwner{.agent = submission_->agent, .ticket = submission_->ticket};
+    }
+    return std::nullopt;
+}
+
 void TickLoop::on_trade(mm::AssetId asset, const mm::Trade& trade) {
-    std::optional<mm::LiveQuote>& bid = live_[asset].bid;
-    std::optional<mm::LiveQuote>& ask = live_[asset].ask;
-
-    const bool bid_was_resting = bid.has_value() && bid->id == trade.buy_order_id;
-    const bool ask_was_resting = ask.has_value() && ask->id == trade.sell_order_id;
-
-    // An id that is not a live quote belongs to adverse flow, unless one of
-    // the market maker's own submits is executing right now: then the
-    // unknown id on that side is its new order, and it crossed its own quote.
-    const bool buy_is_mm = bid_was_resting || submitting_side_ == mm::Side::Buy;
-    const bool sell_is_mm = ask_was_resting || submitting_side_ == mm::Side::Sell;
-    const bool aggressor_is_mm = submitting_side_.has_value();
-
-    const mm::Price mid = world_.price_process().prices()(static_cast<Eigen::Index>(asset));
-
-    const auto book_fill =
-        [&](mm::Side side, std::optional<mm::LiveQuote>& slot, bool was_resting) {
-            world_.pnl_ledger().on_fill(asset, side, trade.price, trade.quantity, mid);
-            if (was_resting) {
-                slot->quote.quantity -= trade.quantity;
-                if (slot->quote.quantity <= 0) {
-                    slot.reset();
-                }
-                quotes_changed_[asset] = true;
-            } else {
-                submit_filled_ += trade.quantity;
-            }
-        };
-    if (buy_is_mm) {
-        book_fill(mm::Side::Buy, bid, bid_was_resting);
-    }
-    if (sell_is_mm) {
-        book_fill(mm::Side::Sell, ask, ask_was_resting);
-    }
+    const auto settle = [&](mm::OrderId id, mm::Side side) {
+        const std::optional<OrderOwner> owner = owner_of(asset, id, side);
+        if (!owner.has_value()) {
+            return; // adverse flow
+        }
+        AgentRuntime& runtime = world_.agent(owner->agent);
+        const bool aggressor = !registry_.find(asset, id).has_value();
+        runtime.on_fill(owner->ticket,
+                        agents::Fill{.asset = asset,
+                                     .id = id,
+                                     .side = side,
+                                     .price = trade.price,
+                                     .quantity = trade.quantity,
+                                     .aggressor = aggressor});
+        if (aggressor && submission_.has_value()) {
+            submission_->filled += trade.quantity;
+        } else if (!runtime.orders().ticket_of(asset, id).has_value()) {
+            registry_.remove(asset, id); // filled in full
+        }
+        touch(owner->agent, asset);
+    };
+    settle(trade.buy_order_id, mm::Side::Buy);
+    settle(trade.sell_order_id, mm::Side::Sell);
 
     for (SimulationObserver* observer : observers_) {
-        observer->on_trade(asset, trade, aggressor_is_mm);
+        observer->on_trade(asset, trade, submission_.has_value());
     }
 }
 
+void TickLoop::on_order_cancelled(mm::AssetId asset, mm::OrderId id) {
+    const std::optional<OrderOwner> owner = registry_.find(asset, id);
+    if (!owner.has_value()) {
+        return;
+    }
+    static_cast<void>(world_.agent(owner->agent).on_done(owner->ticket));
+    registry_.remove(asset, id);
+    touch(owner->agent, asset);
+}
+
+void TickLoop::touch(AgentId agent, mm::AssetId asset) {
+    if (observed_maker_ == agent) {
+        quotes_changed_[asset] = true;
+    }
+}
+
+mm::LiveQuoteSet TickLoop::live_quotes() const {
+    mm::LiveQuoteSet live(world_.asset_count());
+    if (!observed_maker_.has_value()) {
+        return live;
+    }
+    for (const agents::OpenOrder& order : world_.agent(*observed_maker_).orders().orders()) {
+        if (order.state == agents::OrderState::Submitting) {
+            continue;
+        }
+        std::optional<mm::LiveQuote>& slot =
+            order.side == mm::Side::Buy ? live[order.asset].bid : live[order.asset].ask;
+        if (!slot.has_value()) {
+            slot = mm::LiveQuote{.id = order.id,
+                                 .quote =
+                                     mm::Quote{.price = order.price, .quantity = order.remaining}};
+        }
+    }
+    return live;
+}
+
 void TickLoop::notify_quote_changes() {
+    const mm::LiveQuoteSet live = live_quotes();
     for (mm::AssetId asset = 0; asset < world_.asset_count(); ++asset) {
         if (!quotes_changed_[asset]) {
             continue;
         }
         quotes_changed_[asset] = false;
-        const mm::AssetQuotes quotes = as_quotes(live_[asset]);
+        const mm::AssetLiveQuotes& resting = live[asset];
+        mm::AssetQuotes quotes;
+        if (resting.bid.has_value()) {
+            quotes.bid = resting.bid->quote;
+        }
+        if (resting.ask.has_value()) {
+            quotes.ask = resting.ask->quote;
+        }
         for (SimulationObserver* observer : observers_) {
             observer->on_quote(asset, quotes);
         }

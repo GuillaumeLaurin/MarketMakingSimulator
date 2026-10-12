@@ -1,6 +1,6 @@
 /// \file
-/// Ticks per second of a whole SimulationRunner (price process, quoting
-/// strategy, matching engines, adverse flow, ledger), by asset count. One
+/// Ticks per second of a whole SimulationRunner (price process, a market maker
+/// agent, matching engines, adverse flow, accounts), by asset count. One
 /// nanobench iteration is one tick, so ns/op is the cost of a tick and op/s is
 /// the ticks per second. Run on demand: build/<preset>/out/bench/simulation_runner_ticks.
 
@@ -50,21 +50,30 @@ sim::SimulationConfig make_config(std::size_t asset_count) {
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(n, n),
         .process = sim::RandomWalkSpec{.dynamics = math::process::Dynamics::Geometric},
-        .strategy = mm::StrategyConfig{.gamma = 2.0,
-                                       .k = math::Vector::Constant(n, 1.0),
-                                       .correlation = math::Matrix::Identity(n, n),
-                                       .estimators = std::vector<mm::EstimatorSpec>(
-                                           asset_count, mm::ConstantSpec{.sigma = 0.2}),
-                                       .horizon = mm::ConstantHorizon{.tau = 1.0},
-                                       .quote_sizes = std::vector<mm::Quantity>(asset_count, 10),
-                                       .tick_sizes = std::vector<mm::Price>(asset_count, 0.01),
-                                       .limits = {.max_abs_position =
-                                                      std::vector<mm::Quantity>(asset_count, 1000),
-                                                  .max_portfolio_risk = std::nullopt},
-                                       .min_samples = 0},
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .requote_threshold_ticks = 1,
+        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .agents = {sim::AgentSpec{.profile = {.name = "maker",
+                                              .initial_cash = 1e12,
+                                              .can_short = true},
+                                  .timing = {},
+                                  .behavior =
+                                      mms::agents::MarketMakerSpec{
+                                          .strategy =
+                                              mm::StrategyConfig{
+                                                  .gamma = 2.0,
+                                                  .k = math::Vector::Constant(n, 1.0),
+                                                  .correlation = math::Matrix::Identity(n, n),
+                                                  .estimators = std::vector<mm::EstimatorSpec>(
+                                                      asset_count, mm::ConstantSpec{.sigma = 0.2}),
+                                                  .horizon = mm::ConstantHorizon{.tau = 1.0},
+                                                  .quote_sizes = std::vector<mm::Quantity>(
+                                                      asset_count, 10),
+                                                  .tick_sizes = std::vector<mm::Price>(asset_count,
+                                                                                       0.01),
+                                                  .limits = {.max_abs_position = std::vector<
+                                                                 mm::Quantity>(asset_count, 1000),
+                                                             .max_portfolio_risk = std::nullopt},
+                                                  .min_samples = 0},
+                                          .requote_threshold_ticks = 1}}},
         .master_seed = math::rng::Seed{1},
         .dt = 1.0,
         .tick_count = tick_budget};

@@ -31,6 +31,8 @@
 #include <simulation/tick_loop.hpp>
 #include <simulation/world.hpp>
 
+#include "maker.hpp"
+
 namespace sim = mms::simulation;
 namespace math = mms::math;
 namespace mm = mms::mm;
@@ -294,21 +296,18 @@ sim::SimulationConfig two_asset_config() {
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(2, 2),
         .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
-        .strategy =
-            mm::StrategyConfig{
-                .gamma = 2.0,
-                .k = math::Vector::Constant(2, 1.0),
-                .correlation = math::Matrix::Identity(2, 2),
-                .estimators = std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
-                .horizon = mm::ConstantHorizon{.tau = 1.0},
-                .quote_sizes = std::vector<mm::Quantity>(2, 10),
-                .tick_sizes = std::vector<mm::Price>(2, 0.01),
-                .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
-                           .max_portfolio_risk = std::nullopt},
-                .min_samples = 0},
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .requote_threshold_ticks = 1,
+        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .agents = {sim::tests::maker_agent(mm::StrategyConfig{
+            .gamma = 2.0,
+            .k = math::Vector::Constant(2, 1.0),
+            .correlation = math::Matrix::Identity(2, 2),
+            .estimators = std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
+            .horizon = mm::ConstantHorizon{.tau = 1.0},
+            .quote_sizes = std::vector<mm::Quantity>(2, 10),
+            .tick_sizes = std::vector<mm::Price>(2, 0.01),
+            .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
+                       .max_portfolio_risk = std::nullopt},
+            .min_samples = 0})},
         .master_seed = math::rng::Seed{11},
         .dt = 1.0,
         .tick_count = 40};
@@ -321,7 +320,7 @@ TEST_CASE("Over a real run the results satisfy the identities that must always h
     const sim::SimulationConfig config = two_asset_config();
     sim::World world(config);
     sim::TickLoop loop(world, config);
-    sim::ResultsObserver observer(world.pnl_ledger());
+    sim::ResultsObserver observer(world.agent(0).account().ledger());
     TradeCounter counter;
     loop.add_observer(observer);
     loop.add_observer(counter);
@@ -331,7 +330,7 @@ TEST_CASE("Over a real run the results satisfy the identities that must always h
     }
 
     const sim::Results& results = observer.results();
-    const mm::PnlLedger& ledger = world.pnl_ledger();
+    const mm::PnlLedger& ledger = world.agent(0).account().ledger();
     const sim::AssetResults& portfolio = results.portfolio;
 
     // One increment per tick, one level per tick plus the starting one.

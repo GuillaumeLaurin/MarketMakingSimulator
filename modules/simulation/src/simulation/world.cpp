@@ -9,12 +9,13 @@
 #include <utility>
 #include <variant>
 
-#include <mm/strategy_config.hpp>
+#include <agents/market_maker.hpp>
 
 #include <math/covariance/covariance_matrix.hpp>
 #include <math/process/correlated_random_walk.hpp>
 #include <math/process/factor_model.hpp>
 #include <math/rng/stream.hpp>
+#include <simulation/config_validation.hpp>
 #include <simulation/world.hpp>
 
 #include "math/process/price_process.hpp"
@@ -79,6 +80,7 @@ std::vector<math::rng::RngEngine> build_engines(const SimulationConfig& config,
 }
 
 std::unique_ptr<math::process::PriceProcess> build_price_process(const SimulationConfig& config) {
+    validate_agent_setup(config);
     const std::vector<AssetSpec>& assets = config.assets;
     if (assets.empty()) {
         reject("at least one asset is required");
@@ -172,11 +174,26 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
 
 World::World(const SimulationConfig& config)
     : price_process_(build_price_process(config)), engines_(config.assets.size()), event_queue_(),
-      ledger_(gather_ledger_assets(config)), strategy_(mm::make_strategy(config.strategy)),
       adverse_flow_engines_(build_engines(config, math::rng::Subsystem::AdverseFlow)),
       latency_engines_(build_engines(config, math::rng::Subsystem::Latency)) {
-    if (strategy_->asset_count() != config.assets.size()) {
-        reject("strategy's per-asset vectors do not agree with the number of assets");
+    const math::rng::RngHub hub(config.master_seed);
+    const std::vector<mm::LedgerAsset> ledger_assets = gather_ledger_assets(config);
+    agents_.reserve(config.agents.size());
+    for (std::size_t i = 0; i < config.agents.size(); ++i) {
+        const AgentSpec& spec = config.agents[i];
+        const math::rng::AssetKey key = math::rng::asset_key_of(spec.profile.name);
+        agents_.emplace_back(
+            i,
+            spec,
+            config.account_rules,
+            ledger_assets,
+            hub.engine_for({.subsystem = math::rng::Subsystem::Agent, .asset = key}),
+            hub.engine_for({.subsystem = math::rng::Subsystem::AgentLatency, .asset = key}));
+
+        const auto* maker = dynamic_cast<const agents::MarketMakerAgent*>(&agents_.back().agent());
+        if (maker != nullptr && maker->asset_count() != config.assets.size()) {
+            reject("a market maker strategy does not agree with the number of assets");
+        }
     }
 }
 

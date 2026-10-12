@@ -32,6 +32,8 @@
 #include <simulation/simulation_config.hpp>
 #include <simulation/world.hpp>
 
+#include "maker.hpp"
+
 namespace sim = mms::simulation;
 namespace math = mms::math;
 namespace mm = mms::mm;
@@ -85,9 +87,8 @@ sim::SimulationConfig config_of(std::vector<sim::AssetSpec> assets,
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(size, size),
         .process = process,
-        .strategy = strategy_for(n),
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .agents = {sim::tests::maker_agent(strategy_for(n))},
         .master_seed = math::rng::Seed{seed},
         .dt = 1.0,
         .tick_count = 10};
@@ -126,8 +127,8 @@ TEST_CASE("A RandomWalk World is built with every part sized to the asset count"
 
     CHECK(world.asset_count() == 2);
     CHECK(world.price_process().asset_count() == 2);
-    CHECK(world.pnl_ledger().asset_count() == 2);
-    CHECK(world.strategy().asset_count() == 2);
+    REQUIRE(world.agent_count() == 1);
+    CHECK(world.agent(0).account().ledger().asset_count() == 2);
 }
 
 TEST_CASE("A FactorModel World is built too", "[simulation][world]") {
@@ -150,23 +151,14 @@ TEST_CASE("The price process starts at each asset's initial mid", "[simulation][
     CHECK(prices(2) == 25.0);
 }
 
-TEST_CASE("The ledger starts at each asset's initial mid, flat", "[simulation][world]") {
+TEST_CASE("An agent's ledger starts at each asset's initial mid, flat", "[simulation][world]") {
     const sim::World world(config_of({asset(100.0, 0.2), asset(50.0, 0.3)}));
+    const mm::PnlLedger& ledger = world.agent(0).account().ledger();
 
-    CHECK(world.pnl_ledger().last_mid(0) == 100.0);
-    CHECK(world.pnl_ledger().last_mid(1) == 50.0);
-    CHECK(world.pnl_ledger().position(0).quantity() == 0);
-    CHECK(world.pnl_ledger().position(1).quantity() == 0);
-}
-
-TEST_CASE("Each asset's maker fee reaches the ledger", "[simulation][world]") {
-    sim::World world(config_of({asset(100.0, 0.2, 0.0, 2.0), asset(100.0, 0.2, 0.0, 0.0)}));
-
-    world.pnl_ledger().on_fill(0, mm::Side::Buy, 100.0, 1000, 100.0); // notional 100000 at 2 bps
-    world.pnl_ledger().on_fill(1, mm::Side::Buy, 100.0, 1000, 100.0);
-
-    CHECK(world.pnl_ledger().breakdown(0).fees == Catch::Approx(-20.0).margin(1e-9));
-    CHECK(world.pnl_ledger().breakdown(1).fees == 0.0);
+    CHECK(ledger.last_mid(0) == 100.0);
+    CHECK(ledger.last_mid(1) == 50.0);
+    CHECK(ledger.position(0).quantity() == 0);
+    CHECK(ledger.position(1).quantity() == 0);
 }
 
 TEST_CASE("The drift mu of each asset reaches the price process", "[simulation][world]") {
@@ -213,7 +205,9 @@ TEST_CASE("The event queue is one empty queue for every kind of request, all ass
     REQUIRE(world.event_queue().empty());
 
     // Scheduled out of order, one of each kind, on different assets.
-    world.event_queue().schedule(2.0, mm::CancelRequest{.asset = 1, .id = mm::OrderId{7}});
+    world.event_queue().schedule(
+        2.0,
+        sim::CancelArrival{.agent = 0, .asset = 1, .id = mm::OrderId{7}, .side = mm::Side::Buy});
     world.event_queue().schedule(
         3.0,
         sim::AdverseOrder{.asset = 1,
@@ -222,17 +216,20 @@ TEST_CASE("The event queue is one empty queue for every kind of request, all ass
                                                    .time_in_force = mm::MarketTimeInForce::IOC}});
     world.event_queue().schedule(
         1.0,
-        mm::SubmitRequest{
-            .asset = 0, .side = mm::Side::Buy, .quote = mm::Quote{.price = 99.0, .quantity = 5}});
+        sim::SubmitArrival{.agent = 0,
+                           .ticket = sim::Ticket{1},
+                           .order = mms::agents::SubmitLimit{
+                               .asset = 0, .side = mm::Side::Buy, .price = 99.0, .quantity = 5}});
 
     const auto first = world.event_queue().drain_until(1.5);
     REQUIRE(first.size() == 1);
-    REQUIRE(std::holds_alternative<mm::SubmitRequest>(first[0]));
-    CHECK(std::get<mm::SubmitRequest>(first[0]).asset == 0); // earliest first
+    REQUIRE(std::holds_alternative<sim::SubmitArrival>(first[0]));
+    CHECK(std::get<mms::agents::SubmitLimit>(std::get<sim::SubmitArrival>(first[0]).order).asset ==
+          0); // earliest first
 
     const auto rest = world.event_queue().drain_until(10.0);
     REQUIRE(rest.size() == 2);
-    CHECK(std::holds_alternative<mm::CancelRequest>(rest[0]));   // due at 2.0
+    CHECK(std::holds_alternative<sim::CancelArrival>(rest[0]));  // due at 2.0
     REQUIRE(std::holds_alternative<sim::AdverseOrder>(rest[1])); // due at 3.0
     CHECK(std::get<sim::AdverseOrder>(rest[1]).order.quantity == 4);
     CHECK(world.event_queue().empty());
@@ -249,13 +246,15 @@ TEST_CASE("Events due at the same instant come out in the order they were schedu
                           .order = mm::MarketOrder{.side = mm::Side::Sell,
                                                    .quantity = 1,
                                                    .time_in_force = mm::MarketTimeInForce::IOC}});
-    world.event_queue().schedule(1.0, mm::CancelRequest{.asset = 0, .id = mm::OrderId{1}});
+    world.event_queue().schedule(
+        1.0,
+        sim::CancelArrival{.agent = 0, .asset = 0, .id = mm::OrderId{1}, .side = mm::Side::Buy});
 
     const auto due = world.event_queue().drain_until(1.0);
 
     REQUIRE(due.size() == 2);
     CHECK(std::holds_alternative<sim::AdverseOrder>(due[0]));
-    CHECK(std::holds_alternative<mm::CancelRequest>(due[1]));
+    CHECK(std::holds_alternative<sim::CancelArrival>(due[1]));
 }
 
 TEST_CASE("Two Worlds built from the same config share price paths and RNG streams",
@@ -355,17 +354,20 @@ TEST_CASE("FactorModelSpec rejects a beta whose size is not the factor count",
                     std::invalid_argument);
 }
 
-TEST_CASE("The constructor rejects a strategy sized for a different number of assets",
-          "[simulation][world]") {
+TEST_CASE(
+    "The constructor rejects a market maker whose strategy is sized for another number of assets",
+    "[simulation][world]") {
     sim::SimulationConfig config = config_of({asset(100.0, 0.2), asset(50.0, 0.3)});
-    config.strategy = strategy_for(1); // internally consistent, but for 1 asset, not 2
+    config.agents[0] =
+        sim::tests::maker_agent(strategy_for(1)); // internally consistent, but for 1 asset, not 2
 
     CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
 }
 
-TEST_CASE("The constructor propagates the strategy's own validation", "[simulation][world]") {
+TEST_CASE("The constructor propagates an agent's own validation", "[simulation][world]") {
     sim::SimulationConfig config = config_of({asset(100.0, 0.2)});
-    config.strategy.gamma = 0.0; // AvellanedaStoikovStrategy rejects gamma <= 0
+    std::get<mms::agents::MarketMakerSpec>(config.agents[0].behavior).strategy.gamma =
+        0.0; // AvellanedaStoikovStrategy rejects gamma <= 0
 
     CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
 }
@@ -562,4 +564,114 @@ TEST_CASE("A geometric World rejects an initial mid that is not positive",
         config_of({asset(0.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1))},
                   sim::FactorModelSpec{.factor_count = 1});
     CHECK_THROWS_AS(sim::World(factor_config), std::invalid_argument);
+}
+
+// ------------------------------------------------------------------- agents
+
+namespace {
+
+sim::SimulationConfig config_with_agents(std::vector<std::string> names) {
+    sim::SimulationConfig config = config_of({asset(100.0, 0.2), asset(50.0, 0.3)});
+    config.agents.clear();
+    for (std::string& name : names) {
+        config.agents.push_back(
+            sim::tests::maker_agent(strategy_for(2),
+                                    1,
+                                    sim::UniformDelaySpec{.min = 0.0, .max = 9.0},
+                                    1.0,
+                                    std::move(name)));
+    }
+    return config;
+}
+
+} // namespace
+
+TEST_CASE("The world builds one runtime per agent, in the order of the config",
+          "[simulation][world][agents]") {
+    const sim::World world(config_with_agents({"first", "second", "third"}));
+
+    REQUIRE(world.agent_count() == 3);
+    for (sim::AgentId id = 0; id < 3; ++id) {
+        CHECK(world.agent(id).id() == id);
+    }
+    CHECK(world.agent(0).spec().profile.name == "first");
+    CHECK(world.agent(2).spec().profile.name == "third");
+    CHECK_THROWS_AS(world.agent(3), std::out_of_range);
+}
+
+TEST_CASE("A world may have no agent at all", "[simulation][world][agents]") {
+    const sim::World world(config_with_agents({}));
+
+    CHECK(world.agent_count() == 0);
+}
+
+TEST_CASE("Every agent has its own accounts, over the assets of the world",
+          "[simulation][world][agents]") {
+    const sim::World world(config_with_agents({"a", "b"}));
+
+    CHECK(world.agent(0).account().ledger().asset_count() == 2);
+    CHECK(world.agent(1).account().ledger().last_mid(1) == 50.0);
+    CHECK(&world.agent(0).account() != &world.agent(1).account());
+}
+
+TEST_CASE("The world refuses an agent setup that validate_agent_setup refuses, before anything "
+          "else",
+          "[simulation][world][agents]") {
+    sim::SimulationConfig twins = config_with_agents({"same", "same"});
+    CHECK_THROWS_WITH(sim::World(twins), Catch::Matchers::ContainsSubstring("share the name"));
+
+    sim::SimulationConfig slow = config_with_agents({"a"});
+    slow.agents[0].timing.decision_period = 0.0;
+    CHECK_THROWS_AS(sim::World(slow), std::invalid_argument);
+
+    sim::SimulationConfig no_tick = config_with_agents({"a"});
+    no_tick.assets[0].tick_size = 0.0;
+    CHECK_THROWS_AS(sim::World(no_tick), std::invalid_argument);
+}
+
+TEST_CASE("The world refuses a market maker with a negative requote threshold",
+          "[simulation][world][agents]") {
+    sim::SimulationConfig config = config_with_agents({"a"});
+    std::get<mms::agents::MarketMakerSpec>(config.agents[0].behavior).requote_threshold_ticks = -1;
+
+    CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
+}
+
+TEST_CASE("An agent's streams depend on its name, not on its place in the list",
+          "[simulation][world][agents]") {
+    // The runtimes expose no engine, so compare what the delays say: two worlds in which
+    // "b" sits at different positions and has different company draw the same delays.
+    const auto first_quotes = [](std::vector<std::string> names, std::size_t position) {
+        sim::World world(config_with_agents(std::move(names)));
+        const std::vector<mms::agents::AssetView> markets = [&] {
+            std::vector<mms::agents::AssetView> views(2);
+            views[0].signal = 100.0;
+            views[1].signal = 50.0;
+            return views;
+        }();
+        const sim::ActResult result = world.agent(position).act(1, 1.0, markets);
+        std::vector<double> prices;
+        for (const sim::Scheduled& scheduled : result.scheduled) {
+            const auto& arrival = std::get<sim::SubmitArrival>(scheduled.event);
+            prices.push_back(std::get<mms::agents::SubmitLimit>(arrival.order).price);
+            prices.push_back(scheduled.due);
+        }
+        return prices;
+    };
+
+    CHECK(first_quotes({"b"}, 0) == first_quotes({"a", "b", "c"}, 1));
+}
+
+TEST_CASE("Two agents with different names draw different delays", "[simulation][world][agents]") {
+    sim::World world(config_with_agents({"a", "b"}));
+    std::vector<mms::agents::AssetView> markets(2);
+    markets[0].signal = 100.0;
+    markets[1].signal = 50.0;
+
+    const sim::ActResult first = world.agent(0).act(1, 1.0, markets);
+    const sim::ActResult second = world.agent(1).act(1, 1.0, markets);
+
+    REQUIRE(first.scheduled.size() == second.scheduled.size());
+    REQUIRE_FALSE(first.scheduled.empty());
+    CHECK(first.scheduled[0].due != second.scheduled[0].due);
 }
