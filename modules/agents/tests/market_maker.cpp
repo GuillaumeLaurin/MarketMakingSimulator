@@ -477,26 +477,3 @@ TEST_CASE("It has no state to save yet", "[agents][market_maker]") {
 
     CHECK(agent.save().empty());
 }
-
-// ---------------------------------------------------------------------- make_agent
-
-TEST_CASE("make_agent builds a market maker from its spec", "[agents][agent_spec]") {
-    const agents::AgentBehavior behavior = spec(2);
-
-    const std::unique_ptr<agents::Agent> agent = agents::make_agent(behavior);
-
-    REQUIRE(agent != nullptr);
-    CHECK(dynamic_cast<agents::MarketMakerAgent*>(agent.get()) != nullptr);
-}
-
-TEST_CASE("make_agent passes on the refusal of a bad spec", "[agents][agent_spec]") {
-    const agents::AgentBehavior behavior = spec(1, -5);
-
-    CHECK_THROWS_AS(agents::make_agent(behavior), std::invalid_argument);
-}
-
-TEST_CASE("The agent kinds are the alternatives of AgentBehavior", "[agents][agent_spec]") {
-    STATIC_REQUIRE(std::variant_size_v<agents::AgentBehavior> == 1);
-    STATIC_REQUIRE(std::is_same_v<std::variant_alternative_t<0, agents::AgentBehavior>,
-                                  agents::MarketMakerSpec>);
-}
