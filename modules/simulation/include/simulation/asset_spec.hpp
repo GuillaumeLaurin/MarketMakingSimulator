@@ -41,6 +41,10 @@ struct AssetSpec {
     /// The true price's starting point, also PnlLedger's initial mid.
     mm::Price initial_mid;
 
+    /// The smallest price step of this asset's book: an exchange property, the same for
+    /// every agent (AssetView::tick_size). Finite and > 0; validate_agent_setup checks.
+    mm::Price tick_size = 0.01;
+
     /// Maker fee in basis points of notional, forwarded to LedgerAsset.
     double maker_fee_bps = 0.0;
 
@@ -58,7 +62,7 @@ struct AssetSpec {
 
     /// Present only when the simulation uses FactorModelSpec; ignored
     /// (and may be left empty) under RandomWalkSpec.
-    std::optional<FactorModelAssetData> factor_model;
+    std::optional<FactorModelAssetData> factor_model = std::nullopt;
 
     /// Poisson arrival rate of adverse-flow occurrences on this asset, per
     /// unit of simulation time.

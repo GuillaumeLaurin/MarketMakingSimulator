@@ -35,7 +35,7 @@ struct AgentProfile {
 
     /// Largest |position| allowed on any one asset. Absent means no limit. Orders
     /// that bring the position down are always accepted, even past the limit.
-    std::optional<mm::Quantity> max_abs_position;
+    std::optional<mm::Quantity> max_abs_position = std::nullopt;
 };
 
 } // namespace mms::simulation

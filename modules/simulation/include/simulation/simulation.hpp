@@ -10,7 +10,10 @@
 #include <simulation/agent_id.hpp>
 #include <simulation/agent_orders.hpp>
 #include <simulation/agent_profile.hpp>
+#include <simulation/agent_spec.hpp>
+#include <simulation/agent_timing.hpp>
 #include <simulation/asset_spec.hpp>
+#include <simulation/config_validation.hpp>
 #include <simulation/delay_spec.hpp>
 #include <simulation/latency.hpp>
 #include <simulation/latency_config.hpp>

@@ -16,6 +16,8 @@
 
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
+#include <simulation/account_rules.hpp>
+#include <simulation/agent_spec.hpp>
 #include <simulation/asset_spec.hpp>
 #include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>
@@ -46,6 +48,16 @@ struct SimulationConfig {
     /// 0 replaces every quote at every tick. Validated where it is used
     /// (plan_requote throws on a negative value), not here.
     mm::Ticks requote_threshold_ticks = 1;
+
+    /// The agents of the run, in the order they act. Not used by the loop yet: it
+    /// still runs the market maker of `strategy` alone.
+    std::vector<AgentSpec> agents = {};
+
+    /// The rules of the exchange that apply to every account alike.
+    AccountRules account_rules = {};
+
+    /// How many price levels of each side of a book an agent sees (AssetView). >= 1.
+    int book_depth = 5;
 
     /// Expanded into every RngHub stream this run needs (price, adverse
     /// flow, latency), per asset, by World.
