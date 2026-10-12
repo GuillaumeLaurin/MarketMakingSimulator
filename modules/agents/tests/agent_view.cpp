@@ -85,6 +85,37 @@ TEST_CASE("A default asset view shows nothing, and in particular no signal",
     CHECK_FALSE(view.signal.has_value());
 }
 
+TEST_CASE("An asset view carries the tick size of its asset, one cent unless set",
+          "[agents][agent_view]") {
+    const agents::AssetView standard{};
+    const agents::AssetView coarse{
+        .bids = {}, .asks = {}, .recent_trades = {}, .signal = std::nullopt, .tick_size = 0.5};
+
+    CHECK(standard.tick_size == 0.01);
+    CHECK(coarse.tick_size == 0.5);
+}
+
+TEST_CASE("An agent view shows no factors unless it is given some", "[agents][agent_view]") {
+    const std::array<double, 2> moves{0.5, -0.25};
+    const agents::AgentView plain{.tick = 0,
+                                  .time = 0.0,
+                                  .account = {.cash = 1.0, .buying_power = 1.0, .positions = {}},
+                                  .open_orders = {},
+                                  .assets = {}};
+    const agents::AgentView informed{.tick = 0,
+                                     .time = 0.0,
+                                     .account = {.cash = 1.0, .buying_power = 1.0, .positions = {}},
+                                     .open_orders = {},
+                                     .assets = {},
+                                     .factors = moves};
+
+    CHECK(plain.factors.empty());
+    REQUIRE(informed.factors.size() == 2);
+    CHECK(informed.factors[0] == 0.5);
+    CHECK(informed.factors[1] == -0.25);
+    CHECK(informed.factors.data() == moves.data()); // a view of the caller's memory
+}
+
 TEST_CASE("An asset view sees its buffers as they are, best level first", "[agents][agent_view]") {
     const std::array<agents::BookLevel, 3> bids{{{99.0, 10}, {98.0, 20}, {97.0, 30}}};
     const std::array<agents::BookLevel, 2> asks{{{101.0, 5}, {102.0, 15}}};

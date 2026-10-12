@@ -36,6 +36,14 @@ public:
 
     [[nodiscard]] virtual Index asset_count() const noexcept = 0;
 
+    /// What the last advance() drew for each common factor, scaled to the step (the
+    /// move of the factor itself, not of any asset). One entry per factor, all zero
+    /// before the first advance(). Empty for a process that has no factors.
+    [[nodiscard]] virtual const Vector& factor_increments() const noexcept {
+        static const Vector none;
+        return none;
+    }
+
 protected:
     virtual void do_advance(double dt) = 0;
 };

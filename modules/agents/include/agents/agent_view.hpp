@@ -66,6 +66,10 @@ struct AssetView {
     /// The true price, possibly with noise added, for agents configured as
     /// informed. Empty for everyone else.
     std::optional<mm::Price> signal;
+    /// The smallest step of price on this asset: every price an order carries sits on
+    /// a multiple of it. A property of the exchange, the same for every agent. The loop
+    /// always sets it; the default only keeps a hand-built view valid.
+    mm::Price tick_size = 0.01;
 };
 
 /// The agent's own account.
@@ -89,6 +93,11 @@ struct AgentView {
     std::span<const OpenOrder> open_orders;
     /// One per asset, in AssetId order.
     std::span<const AssetView> assets;
+    /// The true common factors of the price process, for agents configured as informed:
+    /// for each factor, the sum of its moves over the time since this agent's previous
+    /// act(), the same span as `elapsed`. Empty for everyone else, and for a price
+    /// process that has no factors.
+    std::span<const double> factors = {};
 };
 
 } // namespace mms::agents

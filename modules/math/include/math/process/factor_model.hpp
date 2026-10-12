@@ -56,6 +56,10 @@ public:
 
     [[nodiscard]] Index asset_count() const noexcept override { return prices_.size(); }
 
+    /// The k common factors' draws of the last advance(), f = sqrt(dt) * factor_chol * z
+    /// (zero before the first advance() and after reset()).
+    [[nodiscard]] const Vector& factor_increments() const noexcept override { return factors_; }
+
 protected:
     void do_advance(double dt) override;
 
@@ -72,6 +76,7 @@ private:
     std::vector<rng::RngEngine> initial_factor_engines_;
     std::vector<rng::RngEngine> factor_engines_;
     Vector prices_;
+    Vector factors_; // the last step's draw of each factor
 };
 
 } // namespace mms::math::process

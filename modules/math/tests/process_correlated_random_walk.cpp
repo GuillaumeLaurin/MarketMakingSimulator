@@ -252,6 +252,20 @@ TEST_CASE("CorrelatedRandomWalk geometric with chol == 0 grows at exp(mu dt)",
     CHECK(walk.prices()(1) == Catch::Approx(100.0 * std::exp(-1.0)));
 }
 
+TEST_CASE("A random walk has no factors, before or after a step",
+          "[process][correlated_random_walk]") {
+    const rng::RngHub hub{rng::Seed{0x8888'0009ULL}};
+    Vector prices(2);
+    prices << 100.0, 50.0;
+    CorrelatedRandomWalk walk{
+        prices, Vector::Zero(2), Matrix::Identity(2, 2), engines_for(hub, 2), Dynamics::Geometric};
+    mms::math::process::PriceProcess& process = walk;
+
+    CHECK(process.factor_increments().size() == 0);
+    process.advance(1.0);
+    CHECK(process.factor_increments().size() == 0);
+}
+
 TEST_CASE("CorrelatedRandomWalk geometric prices stay positive however volatile",
           "[process][correlated_random_walk][geometric]") {
     const rng::RngHub hub{rng::Seed{0x8888'0004ULL}};
