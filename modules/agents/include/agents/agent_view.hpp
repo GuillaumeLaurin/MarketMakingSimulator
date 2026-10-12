@@ -29,13 +29,30 @@ struct TradePrint {
     mm::Side aggressor;
 };
 
-/// An order of this agent that is resting in a book.
+/// Where an order of this agent stands. An order is on its way to the exchange for as
+/// long as the latency of its message lasts, so an agent that acts every tick would
+/// otherwise send the same quote again and again.
+enum class OrderState : std::uint8_t {
+    /// Accepted and sent, not at the exchange yet. It has no order id yet.
+    Submitting,
+    /// At the exchange, resting in the book.
+    Resting,
+    /// At the exchange, with a cancel on its way. It may still trade before the cancel
+    /// arrives.
+    Cancelling,
+};
+
+/// An order of this agent that has not finished: on its way, resting, or being cancelled.
 struct OpenOrder {
     mm::AssetId asset;
+    /// What a Cancel names. Only meaningful once the order has reached the exchange,
+    /// that is when `state` is not Submitting; it is zero before.
     mm::OrderId id;
     mm::Side side;
     mm::Price price;
+    /// What is left of it to trade.
     mm::Quantity remaining;
+    OrderState state = OrderState::Resting;
 };
 
 /// The market in one asset, as this agent may see it.
@@ -64,6 +81,10 @@ struct AccountView {
 struct AgentView {
     std::int64_t tick;
     double time;
+    /// Time since this agent's previous act(), in the simulation's time unit, or since
+    /// the start for the first call. A strategy that feeds an estimator with
+    /// returns per unit of time needs it when the agent does not act every tick.
+    double elapsed = 0.0;
     AccountView account;
     std::span<const OpenOrder> open_orders;
     /// One per asset, in AssetId order.

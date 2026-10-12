@@ -88,12 +88,13 @@ TEST_CASE("two hubs with the same master agree; different masters do not", "[rng
 
 TEST_CASE("distinct StreamKeys give distinct, non-overlapping streams", "[rng][stream]") {
     const RngHub hub{Seed{0x1234}};
-    const std::array<StreamKey, 5> keys{
+    const std::array<StreamKey, 6> keys{
         StreamKey{.subsystem = Subsystem::Price, .asset = AssetKey{7}},
         StreamKey{.subsystem = Subsystem::Latency, .asset = AssetKey{7}},
         StreamKey{.subsystem = Subsystem::Price, .asset = AssetKey{8}},
         StreamKey{.subsystem = Subsystem::PriceFactor, .asset = no_asset},
         StreamKey{.subsystem = Subsystem::Agent, .asset = AssetKey{7}},
+        StreamKey{.subsystem = Subsystem::AgentLatency, .asset = AssetKey{7}},
     };
     std::set<std::array<std::uint64_t, 8>> seen;
     for (const StreamKey& k : keys) {
@@ -192,11 +193,15 @@ TEST_CASE("An agent's stream follows its name and is apart from every asset's",
     // the asset's subsystems.
     const auto aapl = asset_key_of("AAPL");
     const StreamKey agent{.subsystem = Subsystem::Agent, .asset = aapl};
+    const StreamKey agent_latency{.subsystem = Subsystem::AgentLatency, .asset = aapl};
     for (const Subsystem subsystem :
          {Subsystem::Price, Subsystem::AdverseFlow, Subsystem::Latency, Subsystem::PriceFactor}) {
-        CHECK(hub.engine_for(agent) !=
-              hub.engine_for(StreamKey{.subsystem = subsystem, .asset = aapl}));
+        const StreamKey asset_stream{.subsystem = subsystem, .asset = aapl};
+        CHECK(hub.engine_for(agent) != hub.engine_for(asset_stream));
+        CHECK(hub.engine_for(agent_latency) != hub.engine_for(asset_stream));
     }
+    // And an agent's decisions and the delays of its messages are two streams.
+    CHECK(hub.engine_for(agent) != hub.engine_for(agent_latency));
 }
 
 TEST_CASE("Subsystem values are stable, since they are mixed into every stream", "[rng][stream]") {
@@ -205,4 +210,5 @@ TEST_CASE("Subsystem values are stable, since they are mixed into every stream",
     STATIC_REQUIRE(static_cast<int>(Subsystem::Latency) == 2);
     STATIC_REQUIRE(static_cast<int>(Subsystem::PriceFactor) == 3);
     STATIC_REQUIRE(static_cast<int>(Subsystem::Agent) == 4);
+    STATIC_REQUIRE(static_cast<int>(Subsystem::AgentLatency) == 5);
 }

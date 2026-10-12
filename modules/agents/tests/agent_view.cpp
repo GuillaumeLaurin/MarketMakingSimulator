@@ -47,6 +47,34 @@ TEST_CASE("The small records keep what they are given", "[agents][agent_view]") 
     CHECK(order.remaining == 30);
 }
 
+TEST_CASE("An open order is resting unless it says otherwise", "[agents][agent_view]") {
+    constexpr agents::OpenOrder resting{
+        .asset = 0, .id = mm::OrderId{1}, .side = mm::Side::Sell, .price = 1.0, .remaining = 1};
+    constexpr agents::OpenOrder on_its_way{.asset = 0,
+                                           .id = mm::OrderId{0},
+                                           .side = mm::Side::Sell,
+                                           .price = 1.0,
+                                           .remaining = 1,
+                                           .state = agents::OrderState::Submitting};
+    constexpr agents::OpenOrder being_cancelled{.asset = 0,
+                                                .id = mm::OrderId{2},
+                                                .side = mm::Side::Buy,
+                                                .price = 1.0,
+                                                .remaining = 1,
+                                                .state = agents::OrderState::Cancelling};
+
+    CHECK(resting.state == agents::OrderState::Resting);
+    CHECK(on_its_way.state == agents::OrderState::Submitting);
+    CHECK(being_cancelled.state == agents::OrderState::Cancelling);
+}
+
+TEST_CASE("The three order states are distinct and numbered from zero", "[agents][agent_view]") {
+    STATIC_REQUIRE(static_cast<int>(agents::OrderState::Submitting) == 0);
+    STATIC_REQUIRE(static_cast<int>(agents::OrderState::Resting) == 1);
+    STATIC_REQUIRE(static_cast<int>(agents::OrderState::Cancelling) == 2);
+    STATIC_REQUIRE(std::is_same_v<std::underlying_type_t<agents::OrderState>, std::uint8_t>);
+}
+
 TEST_CASE("A default asset view shows nothing, and in particular no signal",
           "[agents][agent_view]") {
     const agents::AssetView view{};
@@ -118,6 +146,25 @@ TEST_CASE("An agent view ties the tick, the account, the open orders and the ass
 TEST_CASE("The tick is a 64-bit signed integer, the time a double", "[agents][agent_view]") {
     STATIC_REQUIRE(std::is_same_v<decltype(agents::AgentView::tick), std::int64_t>);
     STATIC_REQUIRE(std::is_same_v<decltype(agents::AgentView::time), double>);
+    STATIC_REQUIRE(std::is_same_v<decltype(agents::AgentView::elapsed), double>);
+}
+
+TEST_CASE("The time since the agent last acted defaults to zero and can be set",
+          "[agents][agent_view]") {
+    const agents::AgentView first{.tick = 0,
+                                  .time = 0.0,
+                                  .account = {.cash = 1.0, .buying_power = 1.0, .positions = {}},
+                                  .open_orders = {},
+                                  .assets = {}};
+    const agents::AgentView later{.tick = 5,
+                                  .time = 5.0,
+                                  .elapsed = 5.0,
+                                  .account = {.cash = 1.0, .buying_power = 1.0, .positions = {}},
+                                  .open_orders = {},
+                                  .assets = {}};
+
+    CHECK(first.elapsed == 0.0);
+    CHECK(later.elapsed == 5.0);
 }
 
 TEST_CASE("An agent view can be copied, and the copy looks at the same buffers",
