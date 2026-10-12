@@ -618,3 +618,30 @@ TEST_CASE("A cancel on one side does not hold back a new order on the other side
     }
     CHECK(other_side_earlier > 0);
 }
+
+TEST_CASE("The information delay is drawn from the agent's latency stream, none if it is constant",
+          "[simulation][agent_runtime]") {
+    Rig none;
+    CHECK(none.runtime->draw_info_delay() == 0.0);
+
+    Rig fixed({.info_delay = sim::ConstantDelaySpec{.delay = 1.5}});
+    CHECK(fixed.runtime->draw_info_delay() == 1.5);
+
+    // A constant delay draws nothing: the first order delay is the first word of the stream.
+    Rig mixed({.order_delay = sim::UniformDelaySpec{.min = 0.0, .max = 10.0},
+               .info_delay = sim::ConstantDelaySpec{.delay = 1.0}});
+    mixed.script->to_ask = {buy(0, 1.0, 1)};
+    math::rng::RngEngine expected = stream(math::rng::Subsystem::AgentLatency);
+    CHECK(mixed.act(1, 0.0).scheduled[0].due ==
+          sim::draw_delay(mixed.runtime->spec().timing.order_delay, expected));
+
+    // A random one does, and comes first.
+    Rig random({.order_delay = sim::UniformDelaySpec{.min = 0.0, .max = 10.0},
+                .info_delay = sim::UniformDelaySpec{.min = 0.0, .max = 10.0}});
+    math::rng::RngEngine stream_copy = stream(math::rng::Subsystem::AgentLatency);
+    const double info = sim::draw_delay(random.runtime->spec().timing.info_delay, stream_copy);
+    CHECK(random.runtime->draw_info_delay() == info);
+    random.script->to_ask = {buy(0, 1.0, 1)};
+    CHECK(random.act(1, 0.0).scheduled[0].due ==
+          sim::draw_delay(random.runtime->spec().timing.order_delay, stream_copy));
+}

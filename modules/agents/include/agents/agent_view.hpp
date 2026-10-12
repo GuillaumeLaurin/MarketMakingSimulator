@@ -93,7 +93,7 @@ struct AgentView {
     std::span<const OpenOrder> open_orders;
     /// One per asset, in AssetId order.
     std::span<const AssetView> assets;
-    /// The true common factors of the price process, for agents configured as informed:
+    /// The true common factors of the price process, for agents configured as factor traders:
     /// for each factor, the sum of its moves over the time since this agent's previous
     /// act(), the same span as `elapsed`. Empty for everyone else, and for a price
     /// process that has no factors.

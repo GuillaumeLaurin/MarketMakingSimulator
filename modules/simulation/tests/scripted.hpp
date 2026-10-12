@@ -34,11 +34,17 @@ public:
         last_orders.assign(view.open_orders.begin(), view.open_orders.end());
         last_factors.assign(view.factors.begin(), view.factors.end());
         last_asset_count = view.assets.size();
+        last_bids.clear();
+        last_asks.clear();
+        last_trades.clear();
         last_tick_sizes.clear();
         last_signals.clear();
         for (const agents::AssetView& market : view.assets) {
             last_tick_sizes.push_back(market.tick_size);
             last_signals.push_back(market.signal);
+            last_bids.emplace_back(market.bids.begin(), market.bids.end());
+            last_asks.emplace_back(market.asks.begin(), market.asks.end());
+            last_trades.emplace_back(market.recent_trades.begin(), market.recent_trades.end());
         }
         draws.push_back(rng());
         out = to_ask;
@@ -70,6 +76,9 @@ public:
     std::size_t last_asset_count = 0;
     std::vector<mm::Price> last_tick_sizes;
     std::vector<std::optional<mm::Price>> last_signals;
+    std::vector<std::vector<agents::BookLevel>> last_bids;
+    std::vector<std::vector<agents::BookLevel>> last_asks;
+    std::vector<std::vector<agents::TradePrint>> last_trades;
     std::vector<std::uint64_t> draws;
     std::vector<agents::Fill> fills;
     std::vector<std::pair<agents::Action, agents::RejectReason>> rejects;

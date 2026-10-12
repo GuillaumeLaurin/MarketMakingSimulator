@@ -138,6 +138,10 @@ public:
     [[nodiscard]] ActResult
     act(std::int64_t tick, double time, std::span<const agents::AssetView> markets);
 
+    /// How old the market data the agent is about to be shown is: one draw of its information
+    /// delay, from its latency stream. Call it once each time the agent is due, before act().
+    [[nodiscard]] double draw_info_delay();
+
     /// The mid of `asset` moved: marks the account, and with it the collateral.
     void on_mark(mm::AssetId asset, mm::Price mid) { account_.on_mark(asset, mid); }
 

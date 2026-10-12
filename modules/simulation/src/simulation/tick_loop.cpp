@@ -1,8 +1,10 @@
 /// \file
 /// Implementation of TickLoop (<simulation/tick_loop.hpp>).
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -28,10 +30,64 @@ namespace {
     throw std::invalid_argument(std::string("TickLoop: ") + message);
 }
 
+/// The most trades of one asset an agent is shown at a time.
+constexpr std::size_t recent_trades_limit = 50;
+
+double validated_dt(double dt) {
+    if (!std::isfinite(dt) || dt <= 0.0) {
+        reject("dt must be finite and > 0");
+    }
+    return dt;
+}
+
 /// Does this kind of agent get the true price as the signal of its view?
 bool gets_signal(const agents::AgentBehavior& behavior) {
     return std::holds_alternative<agents::MarketMakerSpec>(behavior) ||
            std::holds_alternative<agents::InformedFlowSpec>(behavior);
+}
+
+/// The longest an information delay can be, for sizing the history. An exponential delay has no
+/// longest: 30 means covers all but one draw in 10^13.
+double longest_delay(const DelaySpec& spec) {
+    return std::visit(
+        [](const auto& delay) -> double {
+            using Spec = std::decay_t<decltype(delay)>;
+            if constexpr (std::is_same_v<Spec, ConstantDelaySpec>) {
+                return delay.delay;
+            } else if constexpr (std::is_same_v<Spec, UniformDelaySpec>) {
+                return delay.max;
+            } else {
+                return 30.0 * delay.mean;
+            }
+        },
+        spec);
+}
+
+/// How many ticks of length dt cover `span`, with a cap against absurd specs.
+std::size_t ticks_covering(double span, double dt) {
+    constexpr double cap = 10'000'000.0;
+    return static_cast<std::size_t>(std::min(std::ceil(span / dt), cap));
+}
+
+/// The history an agent setup needs: snapshots as far back as the longest information delay,
+/// tape as far back as the longest delay plus the longest decision period.
+MarketHistory history_for(const SimulationConfig& config) {
+    std::vector<mm::Price> tick_sizes;
+    tick_sizes.reserve(config.assets.size());
+    for (const AssetSpec& asset : config.assets) {
+        tick_sizes.push_back(asset.tick_size);
+    }
+    double delay = 0.0;
+    double period = 0.0;
+    for (const AgentSpec& agent : config.agents) {
+        delay = std::max(delay, longest_delay(agent.timing.info_delay));
+        period = std::max(period, agent.timing.decision_period);
+    }
+    const double dt = config.dt;
+    return MarketHistory(std::move(tick_sizes),
+                         ticks_covering(delay, dt) + 1,
+                         ticks_covering(delay + period, dt) + 2,
+                         recent_trades_limit);
 }
 
 /// What the engine needs to be given for one submit, and what the loop needs to know of it.
@@ -87,10 +143,9 @@ private:
 };
 
 TickLoop::TickLoop(World& world, const SimulationConfig& config)
-    : world_(world), dt_(config.dt), quotes_changed_(world.asset_count(), false) {
-    if (!std::isfinite(dt_) || dt_ <= 0.0) {
-        reject("dt must be finite and > 0");
-    }
+    : world_(world), dt_(validated_dt(config.dt)), history_(history_for(config)),
+      book_depth_(static_cast<std::size_t>(std::max(config.book_depth, 1))),
+      quotes_changed_(world.asset_count(), false) {
     if (config.assets.size() != world.asset_count()) {
         reject("the config does not match the number of assets of the world");
     }
@@ -98,6 +153,8 @@ TickLoop::TickLoop(World& world, const SimulationConfig& config)
     for (std::size_t i = 0; i < world.agent_count(); ++i) {
         const agents::AgentBehavior& behavior = config.agents.at(i).behavior;
         shown_signal_.push_back(gets_signal(behavior));
+        shown_factors_.push_back(std::holds_alternative<agents::FactorTraderSpec>(behavior));
+        seen_.push_back(0);
         if (!observed_maker_.has_value() &&
             std::holds_alternative<agents::MarketMakerSpec>(behavior)) {
             observed_maker_ = i;
@@ -115,14 +172,7 @@ TickLoop::TickLoop(World& world, const SimulationConfig& config)
             const std::optional<OrderOwner> owner = registry_.find(asset, id);
             return owner.has_value() && owner->agent == submission_->agent;
         });
-
-        plain_markets_.push_back(agents::AssetView{.bids = {},
-                                                   .asks = {},
-                                                   .recent_trades = {},
-                                                   .signal = std::nullopt,
-                                                   .tick_size = config.assets[asset].tick_size});
     }
-    signal_markets_ = plain_markets_;
 }
 
 TickLoop::~TickLoop() = default;
@@ -150,7 +200,8 @@ void TickLoop::step() {
         }
     }
 
-    run_agents(prices);
+    record_market(prices);
+    run_agents();
 
     for (const SimulationEvent& event : world_.event_queue().drain_until(time_)) {
         execute(event);
@@ -162,18 +213,46 @@ void TickLoop::step() {
     }
 }
 
-void TickLoop::run_agents(const math::Vector& prices) {
-    for (std::size_t asset = 0; asset < signal_markets_.size(); ++asset) {
-        signal_markets_[asset].signal = prices(static_cast<Eigen::Index>(asset));
+void TickLoop::record_market(const math::Vector& prices) {
+    const std::size_t assets = world_.asset_count();
+    std::vector<std::vector<agents::BookLevel>> bids(assets);
+    std::vector<std::vector<agents::BookLevel>> asks(assets);
+    for (mm::AssetId asset = 0; asset < assets; ++asset) {
+        const mm::OrderBook& book = world_.matching_engine(asset).book();
+        for (const auto& level : book.levels(mm::Side::Buy, book_depth_)) {
+            bids[asset].push_back({.price = level.price, .quantity = level.quantity});
+        }
+        for (const auto& level : book.levels(mm::Side::Sell, book_depth_)) {
+            asks[asset].push_back({.price = level.price, .quantity = level.quantity});
+        }
     }
+    history_.record(
+        time_, std::span<const double>(prices.data(), assets), std::move(bids), std::move(asks));
 
+    // The true moves of the common factors go to the agents that are shown them, who add
+    // them up until they act.
+    const math::Vector& moves = world_.price_process().factor_increments();
+    if (moves.size() > 0) {
+        for (std::size_t agent = 0; agent < world_.agent_count(); ++agent) {
+            if (shown_factors_[agent]) {
+                world_.agent(agent).add_factors(
+                    std::span<const double>(moves.data(), static_cast<std::size_t>(moves.size())));
+            }
+        }
+    }
+}
+
+void TickLoop::run_agents() {
     for (std::size_t agent = 0; agent < world_.agent_count(); ++agent) {
         AgentRuntime& runtime = world_.agent(agent);
         if (!runtime.due(time_)) {
             continue;
         }
-        const ActResult result =
-            runtime.act(ticks_, time_, shown_signal_[agent] ? signal_markets_ : plain_markets_);
+        // The market as it was `delay` ago.
+        const double delay = runtime.draw_info_delay();
+        const std::span<const agents::AssetView> markets =
+            history_.view(time_ - delay, shown_signal_[agent], seen_[agent]);
+        const ActResult result = runtime.act(ticks_, time_, markets);
         for (const Scheduled& scheduled : result.scheduled) {
             std::visit(
                 [&](const auto& event) { world_.event_queue().schedule(scheduled.due, event); },
@@ -235,6 +314,10 @@ std::optional<OrderOwner> TickLoop::owner_of(mm::AssetId asset, mm::OrderId id) 
 }
 
 void TickLoop::on_trade(mm::AssetId asset, const mm::Trade& trade) {
+    history_.add_trade(asset,
+                       agents::TradePrint{.price = trade.price,
+                                          .quantity = trade.quantity,
+                                          .aggressor = submission_.value().side});
     const bool started_by_maker = submission_.has_value() && observed_maker_ == submission_->agent;
     const auto settle = [&](mm::OrderId id, mm::Side side) {
         // Every order in a book belongs to an agent: no owner would be a bug, and throws.

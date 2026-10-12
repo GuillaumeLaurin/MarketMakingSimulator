@@ -633,3 +633,34 @@ TEST_CASE(
     config.agents[0] = sim::tests::informed_agent(1.0, 0.5, sim::ExponentialDelaySpec{.mean = 0.0});
     CHECK_THROWS_AS(sim::World(config), std::invalid_argument); // and a delay is valid
 }
+
+TEST_CASE("A factor trader needs a factor model with one factor per sensitivity",
+          "[simulation][world][agents]") {
+    const auto trader = [](std::size_t sensitivities) {
+        return sim::AgentSpec{
+            .profile = {.name = "factors", .initial_cash = 1e6, .can_short = true},
+            .timing = {},
+            .behavior = mms::agents::FactorTraderSpec{.sensitivities =
+                                                          std::vector<double>(sensitivities, 1.0),
+                                                      .threshold = 0.0,
+                                                      .order_size = 1,
+                                                      .max_position = 5}};
+    };
+
+    // A random walk has no factors.
+    sim::SimulationConfig walk = config_of({asset(100.0, 0.2)});
+    walk.agents = {trader(1)};
+    CHECK_THROWS_AS(sim::World(walk), std::invalid_argument);
+
+    // A factor model with the wrong number of them.
+    sim::SimulationConfig two = config_of({asset(100.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1))},
+                                          sim::FactorModelSpec{.factor_count = 1});
+    two.agents = {trader(2)};
+    CHECK_THROWS_AS(sim::World(two), std::invalid_argument);
+
+    // And the right number.
+    sim::SimulationConfig right = config_of({asset(100.0, 0.2, 0.0, 0.0, factor_data(0.5, 0.1))},
+                                            sim::FactorModelSpec{.factor_count = 1});
+    right.agents = {trader(1)};
+    CHECK_NOTHROW(sim::World(right));
+}

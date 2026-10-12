@@ -929,25 +929,37 @@ sim::SimulationConfig duel_config() {
     return config;
 }
 
-/// A world of one asset and two agents whose behavior the test writes: the runtimes the
-/// world built are replaced by ones around Scripted agents. Prices barely move.
-struct Duel {
-    Duel() {
-        const math::rng::RngHub hub(config.master_seed);
-        for (sim::AgentId id = 0; id < 2; ++id) {
-            auto agent = std::make_unique<sim::tests::Scripted>();
-            script.at(id) = agent.get();
-            const math::rng::AssetKey key = math::rng::asset_key_of(config.agents[id].profile.name);
-            world.agent(id) = sim::AgentRuntime(
-                id,
-                config.agents[id],
-                config.account_rules,
-                {{.initial_mid = 100.0}},
-                hub.engine_for({.subsystem = math::rng::Subsystem::Agent, .asset = key}),
-                hub.engine_for({.subsystem = math::rng::Subsystem::AgentLatency, .asset = key}),
-                std::move(agent));
-        }
+/// Replaces the runtime of every agent of the world with one around a Scripted agent, and
+/// returns the scripts in the order of the agents.
+std::vector<sim::tests::Scripted*> install_scripts(sim::World& world,
+                                                   const sim::SimulationConfig& config) {
+    std::vector<mm::LedgerAsset> ledger_assets;
+    for (const sim::AssetSpec& asset : config.assets) {
+        ledger_assets.push_back({.initial_mid = asset.initial_mid});
     }
+    const math::rng::RngHub hub(config.master_seed);
+    std::vector<sim::tests::Scripted*> scripts;
+    for (sim::AgentId id = 0; id < config.agents.size(); ++id) {
+        auto agent = std::make_unique<sim::tests::Scripted>();
+        scripts.push_back(agent.get());
+        const math::rng::AssetKey key = math::rng::asset_key_of(config.agents[id].profile.name);
+        world.agent(id) = sim::AgentRuntime(
+            id,
+            config.agents[id],
+            config.account_rules,
+            ledger_assets,
+            hub.engine_for({.subsystem = math::rng::Subsystem::Agent, .asset = key}),
+            hub.engine_for({.subsystem = math::rng::Subsystem::AgentLatency, .asset = key}),
+            std::move(agent));
+    }
+    return scripts;
+}
+
+/// A world of one asset and two agents whose behavior the test writes: the runtimes the
+/// world built are replaced by ones around Scripted agents. Prices barely move, unless the
+/// config says otherwise.
+struct Duel {
+    explicit Duel(sim::SimulationConfig given = duel_config()) : config(std::move(given)) {}
 
     /// One tick in which `who` asks for `actions` and the other agent for nothing.
     void step_with(sim::AgentId who, std::vector<mms::agents::Action> actions) {
@@ -957,9 +969,9 @@ struct Duel {
         loop.step();
     }
 
-    sim::SimulationConfig config = duel_config();
+    sim::SimulationConfig config;
     sim::World world{config};
-    std::array<sim::tests::Scripted*, 2> script{};
+    std::vector<sim::tests::Scripted*> script = install_scripts(world, config);
     sim::TickLoop loop{world, config};
 };
 
@@ -1107,38 +1119,272 @@ TEST_CASE("A trade is the market maker's when the market maker's order started i
     CHECK_FALSE(recorder.trades[1].aggressor_is_mm);
 }
 
+// -------------------------------------------------------- what an agent is shown
+
 TEST_CASE("An agent is shown the tick size of the exchange, and the true price only if it is "
           "meant to have it",
-          "[simulation][tick_loop][scripted]") {
+          "[simulation][tick_loop][view]") {
     sim::SimulationConfig config = duel_config();
     config.assets[0].tick_size = 0.05;
     // The second agent is a trend follower: no signal for it.
     config.agents[1].behavior = mms::agents::TrendFollowerSpec{
         .half_life = 5.0, .threshold = 0.1, .order_size = 1, .max_position = 5};
-    sim::World world(config);
-    std::array<sim::tests::Scripted*, 2> script{};
-    const math::rng::RngHub hub(config.master_seed);
-    for (sim::AgentId id = 0; id < 2; ++id) {
-        auto agent = std::make_unique<sim::tests::Scripted>();
-        script.at(id) = agent.get();
-        const math::rng::AssetKey key = math::rng::asset_key_of(config.agents[id].profile.name);
-        world.agent(id) = sim::AgentRuntime(
-            id,
-            config.agents[id],
-            config.account_rules,
-            {{.initial_mid = 100.0}},
-            hub.engine_for({.subsystem = math::rng::Subsystem::Agent, .asset = key}),
-            hub.engine_for({.subsystem = math::rng::Subsystem::AgentLatency, .asset = key}),
-            std::move(agent));
+    Duel duel(config);
+
+    duel.loop.step();
+
+    REQUIRE(duel.script[0]->last_tick_sizes.size() == 1);
+    CHECK(duel.script[0]->last_tick_sizes[0] == 0.05);
+    CHECK(duel.script[1]->last_tick_sizes[0] == 0.05);
+    REQUIRE(duel.script[0]->last_signals[0].has_value());
+    CHECK(*duel.script[0]->last_signals[0] == Catch::Approx(100.0).margin(1e-6));
+    CHECK_FALSE(duel.script[1]->last_signals[0].has_value());
+}
+
+TEST_CASE("An agent is shown the best levels of the book, each with its total quantity",
+          "[simulation][tick_loop][view]") {
+    Duel duel;
+    duel.step_with(0,
+                   {limit(mm::Side::Buy, 99.0, 5),
+                    limit(mm::Side::Buy, 99.0, 2),
+                    limit(mm::Side::Buy, 98.0, 4),
+                    limit(mm::Side::Sell, 101.0, 7)});
+
+    duel.step_with(1, {}); // the second agent looks, at the start of the tick
+
+    const auto& bids = duel.script[1]->last_bids[0];
+    REQUIRE(bids.size() == 2);
+    CHECK(bids[0].price == 99.0); // best first
+    CHECK(bids[0].quantity == 7);
+    CHECK(bids[1].price == 98.0);
+    CHECK(bids[1].quantity == 4);
+    const auto& asks = duel.script[1]->last_asks[0];
+    REQUIRE(asks.size() == 1);
+    CHECK(asks[0].price == 101.0);
+    CHECK(asks[0].quantity == 7);
+}
+
+TEST_CASE("No more levels are shown than book_depth", "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.book_depth = 2;
+    Duel duel(config);
+    duel.step_with(0,
+                   {limit(mm::Side::Buy, 99.0, 1),
+                    limit(mm::Side::Buy, 98.0, 1),
+                    limit(mm::Side::Buy, 97.0, 1)});
+
+    duel.step_with(1, {});
+
+    const auto& bids = duel.script[1]->last_bids[0];
+    REQUIRE(bids.size() == 2);
+    CHECK(bids[1].price == 98.0);
+}
+
+TEST_CASE("An agent is shown the trades since it last looked, once, with the side that started "
+          "them",
+          "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.agents[0].timing.decision_period = 3.0; // it looks at ticks 1, 4 and 7
+    Duel duel(config);
+    duel.step_with(0, {limit(mm::Side::Sell, 100.5, 10)});
+    duel.step_with(1, {limit(mm::Side::Buy, 101.0, 4)}); // a trade of 4, started by a buyer
+    duel.step_with(1, {limit(mm::Side::Buy, 101.0, 3)}); // and one of 3
+
+    // The first agent has not looked since tick 1: it is shown both, oldest first.
+    duel.step_with(0, {});
+    const auto& seen = duel.script[0]->last_trades[0];
+    REQUIRE(seen.size() == 2);
+    CHECK(seen[0].price == 100.5);
+    CHECK(seen[0].quantity == 4);
+    CHECK(seen[0].aggressor == mm::Side::Buy);
+    CHECK(seen[1].quantity == 3);
+
+    duel.step_with(1, {});
+    duel.step_with(1, {});
+    duel.step_with(0, {}); // tick 7: nothing happened since
+    CHECK(duel.script[0]->last_tick == 7);
+    CHECK(duel.script[0]->last_trades[0].empty());
+}
+
+TEST_CASE("An information delay shows the market as it was, and nothing else is late",
+          "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.assets[0].mu = 5.0; // the price rises by 5 per unit of time
+    config.agents[1].timing.info_delay = sim::ConstantDelaySpec{.delay = 2.0};
+    Duel duel(config);
+    // Prices barely move: volatility is 1e-9, so the price at time t is 100 + 5 t.
+
+    for (int tick = 0; tick < 4; ++tick) {
+        duel.loop.step();
     }
-    sim::TickLoop loop(world, config);
 
-    loop.step();
+    REQUIRE(duel.script[0]->last_signals[0].has_value());
+    CHECK(*duel.script[0]->last_signals[0] == Catch::Approx(120.0).margin(1e-5)); // time 4
+    REQUIRE(duel.script[1]->last_signals[0].has_value());
+    CHECK(*duel.script[1]->last_signals[0] == Catch::Approx(110.0).margin(1e-5)); // time 2
+    // Its account and its clock are current.
+    CHECK(duel.script[1]->last_time == 4.0);
+    CHECK(duel.script[1]->last_tick == 4);
+}
 
-    REQUIRE(script[0]->last_tick_sizes.size() == 1);
-    CHECK(script[0]->last_tick_sizes[0] == 0.05);
-    CHECK(script[1]->last_tick_sizes[0] == 0.05);
-    REQUIRE(script[0]->last_signals[0].has_value());
-    CHECK(*script[0]->last_signals[0] == Catch::Approx(100.0).margin(1e-6));
-    CHECK_FALSE(script[1]->last_signals[0].has_value());
+TEST_CASE("An information delay shows the book as it was and the trades up to then",
+          "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.agents[1].timing.info_delay = sim::ConstantDelaySpec{.delay = 2.0};
+    Duel duel(config);
+
+    duel.step_with(0, {limit(mm::Side::Sell, 100.5, 10)}); // tick 1
+    duel.step_with(0, {limit(mm::Side::Buy, 101.0, 4)});   // tick 2: trades with its own? no: STP
+    duel.step_with(1, {});                                 // tick 3: the delayed agent looks
+
+    // At tick 3 it is shown the market of time 1: before anything had been posted.
+    CHECK(duel.script[1]->last_asks[0].empty());
+
+    duel.step_with(1, {}); // tick 4: it is shown time 2, where the ask rests
+    REQUIRE(duel.script[1]->last_asks[0].size() == 1);
+    CHECK(duel.script[1]->last_asks[0][0].quantity == 10);
+}
+
+TEST_CASE("A random information delay is drawn from the agent's own stream, so it replays",
+          "[simulation][tick_loop][view]") {
+    const auto signals = [](std::uint64_t seed) {
+        sim::SimulationConfig config = duel_config();
+        config.master_seed = math::rng::Seed{seed};
+        config.assets[0].mu = 5.0;
+        config.agents[1].timing.info_delay = sim::UniformDelaySpec{.min = 0.0, .max = 5.0};
+        Duel duel(config);
+        std::vector<double> seen;
+        for (int tick = 0; tick < 20; ++tick) {
+            duel.loop.step();
+            seen.push_back(*duel.script[1]->last_signals[0]);
+        }
+        return seen;
+    };
+
+    CHECK(signals(3) == signals(3));
+    CHECK(signals(3) != signals(4));
+    for (const double price : signals(3)) {
+        CHECK(price <= 100.0 + (5.0 * 20.0) + 1e-5);
+    }
+}
+
+TEST_CASE("The common factors go to the factor traders, added up between two acts",
+          "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.process = sim::FactorModelSpec{.factor_count = 2};
+    config.assets[0].factor_model = sim::FactorModelAssetData{
+        .beta = (math::Vector(2) << 1.0, 0.5).finished(), .idiosyncratic_volatility = 0.1};
+    config.assets[0].price_volatility = 1.0;
+    // The first agent is a factor trader (acting every tick), the second acts every 3 ticks.
+    config.agents[0].behavior = mms::agents::FactorTraderSpec{
+        .sensitivities = {1.0, 1.0}, .threshold = 0.0, .order_size = 1, .max_position = 5};
+    config.agents[1].behavior = mms::agents::FactorTraderSpec{
+        .sensitivities = {1.0, 1.0}, .threshold = 0.0, .order_size = 1, .max_position = 5};
+    config.agents[1].timing.decision_period = 3.0;
+    Duel duel(config);
+
+    std::vector<double> every_tick;
+    std::vector<double> since_last(2, 0.0);
+    for (int tick = 1; tick <= 7; ++tick) {
+        duel.loop.step();
+        const math::Vector& moves = duel.world.price_process().factor_increments();
+        REQUIRE(moves.size() == 2);
+        // The first agent acts every tick: it is shown exactly this tick's moves.
+        CHECK(duel.script[0]->last_factors == std::vector<double>{moves(0), moves(1)});
+        since_last[0] += moves(0);
+        since_last[1] += moves(1);
+        if (duel.script[1]->last_tick == tick) {
+            // The second one acted this tick: the moves of all the ticks since its last act.
+            CHECK(duel.script[1]->last_factors[0] == Catch::Approx(since_last[0]).margin(1e-12));
+            CHECK(duel.script[1]->last_factors[1] == Catch::Approx(since_last[1]).margin(1e-12));
+            since_last.assign(2, 0.0);
+        }
+    }
+    CHECK(duel.script[1]->acts == 3); // ticks 1, 4 and 7
+}
+
+TEST_CASE("Agents that are not factor traders are shown no factors",
+          "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.process = sim::FactorModelSpec{.factor_count = 1};
+    config.assets[0].factor_model = sim::FactorModelAssetData{
+        .beta = (math::Vector(1) << 1.0).finished(), .idiosyncratic_volatility = 0.1};
+    config.assets[0].price_volatility = 1.0;
+    Duel duel(config);
+
+    duel.loop.step();
+    duel.loop.step();
+
+    CHECK(duel.script[0]->last_factors.empty());
+    CHECK(duel.script[1]->last_factors.empty());
+}
+
+TEST_CASE("The snapshots kept reach as far back as the longest information delay",
+          "[simulation][tick_loop][view]") {
+    // The price rises by 5 per unit of time, so how old the signal is can be read off it.
+    const auto staleness = [](sim::DelaySpec delay, int ticks) {
+        sim::SimulationConfig config = duel_config();
+        config.assets[0].mu = 5.0;
+        config.agents[1].timing.info_delay = delay;
+        Duel duel(config);
+        double oldest = 0.0;
+        for (int tick = 1; tick <= ticks; ++tick) {
+            duel.loop.step();
+            const double age = (100.0 + (5.0 * tick) - *duel.script[1]->last_signals[0]) / 5.0;
+            oldest = std::max(oldest, age);
+        }
+        return oldest;
+    };
+
+    // A uniform delay is stale by up to its maximum, and not more.
+    const double uniform = staleness(sim::UniformDelaySpec{.min = 0.0, .max = 3.0}, 100);
+    CHECK(uniform > 2.0);
+    CHECK(uniform <= 3.0 + 1e-6);
+
+    // An exponential delay has no maximum: a long one is still shown as old as it was drawn.
+    CHECK(staleness(sim::ExponentialDelaySpec{.mean = 1.0}, 300) > 2.5);
+}
+
+TEST_CASE("Delayed and infrequent: every trade is shown once, none is lost",
+          "[simulation][tick_loop][view]") {
+    sim::SimulationConfig config = duel_config();
+    config.agents.push_back(sim::tests::maker_agent(strategy_for(1), 1, {}, 1.0, "taker"));
+    config.agents[1].timing.decision_period = 3.0;
+    config.agents[1].timing.info_delay = sim::ConstantDelaySpec{.delay = 2.0};
+    Duel duel(config);
+    // Agent 0 offers a lot at tick 1; agent 2 buys one at each tick from tick 2.
+    duel.script[0]->to_ask = {limit(mm::Side::Sell, 100.5, 1000)};
+    duel.script[0]->once = true;
+    duel.script[2]->once = false;
+
+    std::size_t shown = 0;
+    for (int tick = 1; tick <= 19; ++tick) {
+        duel.script[2]->to_ask.clear();
+        if (tick >= 2) {
+            duel.script[2]->to_ask = {
+                mms::agents::SubmitMarket{.asset = 0, .side = mm::Side::Buy, .quantity = 1}};
+        }
+        const int acts_before = duel.script[1]->acts;
+        duel.loop.step();
+        if (duel.script[1]->acts > acts_before) {
+            shown += duel.script[1]->last_trades[0].size();
+        }
+    }
+
+    // The observer acts at ticks 1, 4, ..., 19 and sees the market of two ticks earlier: at
+    // tick 19 that is the start of tick 17, which holds the trades of ticks 2 to 16.
+    CHECK(duel.script[1]->acts == 7);
+    CHECK(shown == 15);
+}
+
+TEST_CASE("A trade is shown with the side of the order that started it, buy or sell",
+          "[simulation][tick_loop][view]") {
+    Duel duel;
+    duel.step_with(0, {limit(mm::Side::Buy, 99.0, 10)});
+    duel.step_with(1, {limit(mm::Side::Sell, 98.5, 3)}); // a seller hits the bid
+    duel.step_with(0, {});
+
+    REQUIRE(duel.script[0]->last_trades[0].size() == 1);
+    CHECK(duel.script[0]->last_trades[0][0].aggressor == mm::Side::Sell);
+    CHECK(duel.script[0]->last_trades[0][0].price == 99.0);
 }

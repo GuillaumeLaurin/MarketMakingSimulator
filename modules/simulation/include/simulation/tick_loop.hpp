@@ -16,8 +16,10 @@
 /// settled in the accounts of both parties. An agent never trades with itself: the engines
 /// cancel the older of its own orders instead (self-trade prevention).
 ///
-/// What an agent is shown is still partial: no book levels and no recent trades yet, and
-/// the true price only as the signal of the market maker and of informed flow.
+/// What an agent is shown is the best levels of each book, the trades since it last looked, and
+/// the true price only as the signal of the market maker and of informed flow. All of it is
+/// as of `info_delay` ago, drawn each time the agent acts; its own orders and account are
+/// current. The true moves of the common factors go to the factor traders.
 ///
 /// The observers still speak of one market maker: the first market maker of the config.
 /// Its quotes are the ones notified and returned by live_quotes(), and a trade counts as the
@@ -34,6 +36,7 @@
 #include <mm/types.hpp>
 
 #include <simulation/agent_id.hpp>
+#include <simulation/market_history.hpp>
 #include <simulation/order_registry.hpp>
 #include <simulation/simulation_config.hpp>
 #include <simulation/simulation_export.hpp>
@@ -87,7 +90,8 @@ private:
         mm::Quantity filled = 0;
     };
 
-    void run_agents(const math::Vector& prices);
+    void record_market(const math::Vector& prices);
+    void run_agents();
     void execute(const SimulationEvent& event);
     void execute_submit(const SubmitArrival& arrival);
     void execute_cancel(const CancelArrival& arrival);
@@ -105,9 +109,11 @@ private:
     OrderRegistry registry_;
     std::optional<Submission> submission_;
     std::optional<AgentId> observed_maker_;
-    std::vector<bool> shown_signal_;                ///< per agent: gets AssetView::signal
-    std::vector<agents::AssetView> plain_markets_;  ///< what an agent without a signal sees
-    std::vector<agents::AssetView> signal_markets_; ///< the same with the true prices
+    MarketHistory history_;
+    std::size_t book_depth_;
+    std::vector<bool> shown_signal_;  ///< per agent: gets AssetView::signal
+    std::vector<bool> shown_factors_; ///< per agent: gets AgentView::factors
+    std::vector<std::uint64_t> seen_; ///< per agent: the last tick of tape it has been shown
     std::vector<SimulationObserver*> observers_;
     std::vector<std::unique_ptr<EngineObserver>> engine_observers_;
     std::vector<bool> quotes_changed_;

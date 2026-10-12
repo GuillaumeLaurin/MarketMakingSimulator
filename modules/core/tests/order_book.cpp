@@ -149,3 +149,53 @@ TEST_CASE("OrderBook::depth_at sums quantity at a price on the requested side on
     CHECK(book.depth_at(Side::Buy, 100.0) == 7.0);
     CHECK(book.depth_at(Side::Sell, 100.0) == 50.0);
 }
+
+TEST_CASE("OrderBook::levels lists the best levels first, with the total at each price",
+          "[core][order_book]") {
+    OrderBook<double, double> book;
+    book.add(OrderId{1}, make_order(Side::Buy, 99.0, 5.0));
+    book.add(OrderId{2}, make_order(Side::Buy, 101.0, 2.0));
+    book.add(OrderId{3}, make_order(Side::Buy, 101.0, 3.0));
+    book.add(OrderId{4}, make_order(Side::Buy, 100.0, 4.0));
+    book.add(OrderId{5}, make_order(Side::Sell, 103.0, 1.0));
+    book.add(OrderId{6}, make_order(Side::Sell, 102.0, 6.0));
+    book.add(OrderId{7}, make_order(Side::Sell, 102.0, 1.0));
+
+    const auto bids = book.levels(Side::Buy, 2);
+    REQUIRE(bids.size() == 2);
+    CHECK(bids[0].price == 101.0); // the highest bid first, both orders added up
+    CHECK(bids[0].quantity == 5.0);
+    CHECK(bids[1].price == 100.0);
+    CHECK(bids[1].quantity == 4.0);
+
+    const auto asks = book.levels(Side::Sell, 5);
+    REQUIRE(asks.size() == 2);     // fewer than asked: the side has two
+    CHECK(asks[0].price == 102.0); // the lowest ask first
+    CHECK(asks[0].quantity == 7.0);
+    CHECK(asks[1].price == 103.0);
+    CHECK(asks[1].quantity == 1.0);
+}
+
+TEST_CASE("OrderBook::levels of an empty side, or of zero levels, is empty", "[core][order_book]") {
+    OrderBook<double, double> book;
+    book.add(OrderId{1}, make_order(Side::Buy, 99.0, 5.0));
+
+    CHECK(book.levels(Side::Sell, 3).empty());
+    CHECK(book.levels(Side::Buy, 0).empty());
+}
+
+TEST_CASE("OrderBook::levels follows the book as orders fill and leave", "[core][order_book]") {
+    OrderBook<double, double> book;
+    book.add(OrderId{1}, make_order(Side::Buy, 100.0, 5.0));
+    book.add(OrderId{2}, make_order(Side::Buy, 100.0, 3.0));
+    book.add(OrderId{3}, make_order(Side::Buy, 99.0, 4.0));
+
+    book.fill(OrderId{1}, 2.0);
+    CHECK(book.levels(Side::Buy, 1)[0].quantity == 6.0);
+
+    book.cancel(OrderId{1});
+    book.cancel(OrderId{2});
+    const auto bids = book.levels(Side::Buy, 2);
+    REQUIRE(bids.size() == 1);
+    CHECK(bids[0].price == 99.0);
+}

@@ -54,6 +54,10 @@ AgentRuntime::AgentRuntime(AgentId id,
     }
 }
 
+double AgentRuntime::draw_info_delay() {
+    return draw_delay(spec_.timing.info_delay, latency_);
+}
+
 bool AgentRuntime::due(double time) const noexcept {
     return time >= next_due_ - (clock_slack * spec_.timing.decision_period);
 }

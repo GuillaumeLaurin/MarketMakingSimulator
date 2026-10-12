@@ -9,6 +9,7 @@
 #include <utility>
 #include <variant>
 
+#include <agents/factor_trader.hpp>
 #include <agents/market_maker.hpp>
 
 #include <math/covariance/covariance_matrix.hpp>
@@ -180,6 +181,12 @@ World::World(const SimulationConfig& config)
         const auto* maker = dynamic_cast<const agents::MarketMakerAgent*>(&agents_.back().agent());
         if (maker != nullptr && maker->asset_count() != config.assets.size()) {
             reject("a market maker strategy does not agree with the number of assets");
+        }
+        if (const auto* trader = std::get_if<agents::FactorTraderSpec>(&spec.behavior)) {
+            const auto* factors = std::get_if<FactorModelSpec>(&config.process);
+            if (factors == nullptr || factors->factor_count != trader->sensitivities.size()) {
+                reject("a factor trader needs a factor model with one factor per sensitivity");
+            }
         }
     }
 }

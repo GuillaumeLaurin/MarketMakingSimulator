@@ -22,6 +22,7 @@
 #include <map>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include <core/concepts.hpp>
 #include <core/order.hpp>
@@ -29,6 +30,12 @@
 #include <core/side.hpp>
 
 namespace mms::core {
+
+/// The total resting quantity at one price: one line of the book as a market data feed shows it.
+template<OrderedArithmetic Price, OrderedArithmetic Quantity> struct LevelDepth {
+    Price price;
+    Quantity quantity;
+};
 
 /// A resting entry, returned by best() so callers get both the id (to
 /// build a Trade) and the order data in one call.
@@ -173,6 +180,31 @@ public:
         return total;
     }
 
+    /// The `count` best levels, each with the total quantity resting at its price: from the
+    /// highest price down when `from_highest`, from the lowest up otherwise. Fewer when the
+    /// side has fewer.
+    [[nodiscard]] std::vector<LevelDepth<Price, Quantity>> best_levels(bool from_highest,
+                                                                       std::size_t count) const {
+        std::vector<LevelDepth<Price, Quantity>> result;
+        const auto take = [&](const auto& price, const Level& level) {
+            Quantity total{};
+            for (const auto& entry : level) {
+                total = total + entry.order.quantity;
+            }
+            result.push_back(LevelDepth<Price, Quantity>{.price = price, .quantity = total});
+        };
+        if (from_highest) {
+            for (auto it = levels_.rbegin(); it != levels_.rend() && result.size() < count; ++it) {
+                take(it->first, it->second);
+            }
+        } else {
+            for (auto it = levels_.begin(); it != levels_.end() && result.size() < count; ++it) {
+                take(it->first, it->second);
+            }
+        }
+        return result;
+    }
+
     [[nodiscard]] std::size_t size() const noexcept { return size_; }
 
 private:
@@ -241,6 +273,13 @@ public:
     }
 
     [[nodiscard]] std::size_t size(Side side) const noexcept { return levels_for(side).size(); }
+
+    /// The `count` best price levels of `side`, best first (the highest bids, the lowest asks),
+    /// each with the total quantity resting at its price. Fewer when the side has fewer.
+    [[nodiscard]] std::vector<LevelDepth<Price, Quantity>> levels(Side side,
+                                                                  std::size_t count) const {
+        return levels_for(side).best_levels(side == Side::Buy, count);
+    }
 
 private:
     struct Location {
