@@ -4,13 +4,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <agents/flow.hpp>
 #include <agents/informed_flow.hpp>
+#include <agents/state_bytes.hpp>
 
 namespace mms::agents {
 
@@ -63,14 +63,7 @@ void InformedFlowAgent::act(const AgentView& view,
 }
 
 std::vector<std::byte> InformedFlowAgent::save() const {
-    if (previous_.empty()) {
-        return {};
-    }
-    const std::uint64_t count = previous_.size();
-    std::vector<std::byte> bytes(sizeof(count) + (previous_.size() * sizeof(double)));
-    std::memcpy(bytes.data(), &count, sizeof(count));
-    std::memcpy(bytes.data() + sizeof(count), previous_.data(), previous_.size() * sizeof(double));
-    return bytes;
+    return previous_.empty() ? std::vector<std::byte>{} : encode_doubles(previous_);
 }
 
 void InformedFlowAgent::load(std::span<const std::byte> state) {
@@ -78,18 +71,7 @@ void InformedFlowAgent::load(std::span<const std::byte> state) {
         previous_.clear();
         return;
     }
-    std::uint64_t count = 0;
-    if (state.size() < sizeof(count)) {
-        reject("the saved state is too short");
-    }
-    std::memcpy(&count, state.data(), sizeof(count));
-    const std::size_t payload = state.size() - sizeof(count);
-    if (count == 0 || payload % sizeof(double) != 0 || payload / sizeof(double) != count) {
-        reject("the saved state does not hold a whole number of signals");
-    }
-    std::vector<double> restored(count);
-    std::memcpy(restored.data(), state.data() + sizeof(count), count * sizeof(double));
-    previous_ = std::move(restored);
+    previous_ = decode_doubles(state);
 }
 
 } // namespace mms::agents

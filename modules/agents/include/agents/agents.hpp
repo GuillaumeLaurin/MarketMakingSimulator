@@ -9,11 +9,15 @@
 #include <agents/agent_spec.hpp>
 #include <agents/agent_view.hpp>
 #include <agents/book.hpp>
+#include <agents/deviation_trader.hpp>
+#include <agents/factor_trader.hpp>
 #include <agents/flow.hpp>
 #include <agents/informed_flow.hpp>
 #include <agents/market_maker.hpp>
 #include <agents/noise_trader.hpp>
 #include <agents/reject_reason.hpp>
 #include <agents/size_spec.hpp>
+#include <agents/sizing.hpp>
+#include <agents/state_bytes.hpp>
 
 #endif // MMS_AGENTS_AGENTS_HPP
