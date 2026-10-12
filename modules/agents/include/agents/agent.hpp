@@ -46,8 +46,8 @@ public:
     /// One of this agent's orders traded. Called before the next act().
     virtual void on_fill(const Fill& /*fill*/) {}
 
-    /// The gateway refused `action`, for `reason`. Called at once, within the
-    /// act() that produced it.
+    /// The gateway refused `action`, for `reason`. Called right after the act() that
+    /// produced it, before the next one.
     virtual void on_reject(const Action& /*action*/, RejectReason /*reason*/) {}
 
     /// Everything the agent needs to carry on exactly where it is, as bytes

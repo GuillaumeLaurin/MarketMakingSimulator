@@ -9,6 +9,7 @@
 #include <simulation/adverse_flow.hpp>
 #include <simulation/agent_id.hpp>
 #include <simulation/agent_orders.hpp>
+#include <simulation/agent_runtime.hpp>
 #include <simulation/agent_profile.hpp>
 #include <simulation/agent_spec.hpp>
 #include <simulation/agent_timing.hpp>
