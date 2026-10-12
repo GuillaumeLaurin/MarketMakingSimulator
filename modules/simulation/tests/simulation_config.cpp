@@ -16,9 +16,9 @@
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
 #include <simulation/asset_spec.hpp>
-#include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>
 #include <simulation/simulation_config.hpp>
+#include <simulation/size_spec.hpp>
 
 namespace sim = mms::simulation;
 namespace math = mms::math;
@@ -30,8 +30,7 @@ sim::AssetSpec minimal_asset(mm::Price mid) {
     return sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
                           .initial_mid = mid,
                           .price_volatility = 0.2,
-                          .factor_model = std::nullopt,
-                          .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}};
+                          .factor_model = std::nullopt};
 }
 
 sim::AgentSpec minimal_agent(std::string name) {
@@ -52,7 +51,6 @@ TEST_CASE("SimulationConfig holds every top-level field exactly",
         .assets = {minimal_asset(100.0), minimal_asset(50.0)},
         .correlation = math::Matrix::Identity(2, 2),
         .process = sim::RandomWalkSpec{},
-        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
         .agents = {minimal_agent("a"), minimal_agent("b"), minimal_agent("c")},
         .account_rules = {.short_collateral_rate = 0.5, .market_order_buffer = 0.1},
         .book_depth = 8,

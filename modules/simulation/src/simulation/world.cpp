@@ -68,17 +68,6 @@ std::vector<mm::LedgerAsset> gather_ledger_assets(const SimulationConfig& config
     return assets;
 }
 
-std::vector<math::rng::RngEngine> build_engines(const SimulationConfig& config,
-                                                math::rng::Subsystem subsystem) {
-    const math::rng::RngHub hub(config.master_seed);
-    std::vector<math::rng::RngEngine> engines;
-    engines.reserve(config.assets.size());
-    for (const AssetSpec& asset : config.assets) {
-        engines.push_back(hub.engine_for({.subsystem = subsystem, .asset = asset_key(asset)}));
-    }
-    return engines;
-}
-
 std::unique_ptr<math::process::PriceProcess> build_price_process(const SimulationConfig& config) {
     validate_agent_setup(config);
     const std::vector<AssetSpec>& assets = config.assets;
@@ -173,9 +162,7 @@ std::unique_ptr<math::process::PriceProcess> build_price_process(const Simulatio
 } // namespace
 
 World::World(const SimulationConfig& config)
-    : price_process_(build_price_process(config)), engines_(config.assets.size()), event_queue_(),
-      adverse_flow_engines_(build_engines(config, math::rng::Subsystem::AdverseFlow)),
-      latency_engines_(build_engines(config, math::rng::Subsystem::Latency)) {
+    : price_process_(build_price_process(config)), engines_(config.assets.size()), event_queue_() {
     const math::rng::RngHub hub(config.master_seed);
     const std::vector<mm::LedgerAsset> ledger_assets = gather_ledger_assets(config);
     agents_.reserve(config.agents.size());

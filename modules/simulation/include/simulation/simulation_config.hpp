@@ -16,7 +16,6 @@
 #include <simulation/account_rules.hpp>
 #include <simulation/agent_spec.hpp>
 #include <simulation/asset_spec.hpp>
-#include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>
 
 namespace mms::simulation {
@@ -32,8 +31,6 @@ struct SimulationConfig {
     /// Which price-process mechanism drives the whole basket
     PriceProcessSpec process;
 
-    LatencyConfig latency = {};
-
     /// The agents of the run, in the order they act.
     std::vector<AgentSpec> agents = {};
 
@@ -43,8 +40,8 @@ struct SimulationConfig {
     /// How many price levels of each side of a book an agent sees (AssetView). >= 1.
     int book_depth = 5;
 
-    /// Expanded into every RngHub stream this run needs (price, adverse
-    /// flow, latency), per asset, by World.
+    /// Expanded into every RngHub stream this run needs (price,
+    /// agents), per asset, by World.
     math::rng::Seed master_seed;
 
     /// The simulation's fixed time step, in its own time unit (the same one

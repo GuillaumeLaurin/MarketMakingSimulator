@@ -30,7 +30,7 @@ struct AssetResults {
     /// Trades where the market maker's own order was the aggressor.
     std::int64_t mm_trade_count = 0;
 
-    /// Trades where adverse flow was the aggressor.
+    /// Trades started by an agent other than the market maker.
     std::int64_t adverse_trade_count = 0;
 
     /// The P&L breakdown at the end of the run.

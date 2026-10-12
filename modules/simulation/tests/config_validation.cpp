@@ -12,6 +12,7 @@
 #include <math/rng/seed.hpp>
 #include <simulation/config_validation.hpp>
 #include <simulation/simulation_config.hpp>
+#include <simulation/size_spec.hpp>
 
 namespace sim = mms::simulation;
 namespace agents = mms::agents;
@@ -35,14 +36,8 @@ sim::AgentSpec noise_agent(std::string name) {
 
 sim::SimulationConfig valid_config() {
     sim::SimulationConfig config{};
-    config.assets = {sim::AssetSpec{.symbol = "A",
-                                    .initial_mid = 100.0,
-                                    .price_volatility = 0.2,
-                                    .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}},
-                     sim::AssetSpec{.symbol = "B",
-                                    .initial_mid = 50.0,
-                                    .price_volatility = 0.2,
-                                    .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}}};
+    config.assets = {sim::AssetSpec{.symbol = "A", .initial_mid = 100.0, .price_volatility = 0.2},
+                     sim::AssetSpec{.symbol = "B", .initial_mid = 50.0, .price_volatility = 0.2}};
     config.agents = {noise_agent("alice"), noise_agent("bob")};
     config.master_seed = math::rng::Seed{1};
     config.dt = 1.0;

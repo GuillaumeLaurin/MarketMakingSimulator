@@ -30,10 +30,8 @@ public:
     /// side means that side is not quoted).
     virtual void on_quote(mm::AssetId /*asset*/, const mm::AssetQuotes& /*quotes*/) {}
 
-    /// A trade happened on `asset`. `aggressor_is_mm` is true when the
-    /// market maker's own order crossed the book, false when adverse flow
-    /// did (against one of the market maker's resting quotes, or against
-    /// nothing of the market maker's at all).
+    /// A trade happened on `asset`. `aggressor_is_mm` is true when the order of the
+    /// (first) market maker started it, false when another agent.s order did.
     virtual void
     on_trade(mm::AssetId /*asset*/, const mm::Trade& /*trade*/, bool /*aggressor_is_mm*/) {}
 

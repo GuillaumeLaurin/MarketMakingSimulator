@@ -2,7 +2,7 @@
 #define MMS_SIMULATION_DELAY_SPEC_HPP
 
 /// \file
-/// How long a submit, cancel, or adverse-flow order takes to reach the
+/// How long an order or a cancel, or the data an agent sees, takes to reach the
 /// exchange: a small, extensible set of distributions over a delay in the
 /// simulation's own time unit (the same one as dt and tau). Kept separate
 /// from size_spec.hpp's DistributionSpec: a delay is a duration, not a whole
@@ -13,7 +13,7 @@
 
 namespace mms::simulation {
 
-/// Always the same delay, including 0 (adverse flow that never waits).
+/// Always the same delay, including 0 (a message that never waits).
 struct ConstantDelaySpec {
     double delay;
 };
@@ -31,7 +31,7 @@ struct ExponentialDelaySpec {
     double mean;
 };
 
-/// What kind of delay a submit, cancel, or adverse-flow order gets. Converted
+/// What kind of delay a message gets. Converted
 /// to an actual draw wherever a RngEngine is available (latency.cpp)
 using DelaySpec = std::variant<ConstantDelaySpec, UniformDelaySpec, ExponentialDelaySpec>;
 

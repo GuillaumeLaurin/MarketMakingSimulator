@@ -42,33 +42,30 @@ namespace {
 sim::SimulationConfig make_config(std::int64_t tick_count, std::uint64_t seed = 11) {
     std::vector<sim::AssetSpec> assets;
     for (const double mid : {100.0, 150.0}) {
-        assets.push_back(
-            sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
-                           .initial_mid = mid,
-                           .maker_fee_bps = 1.0,
-                           .price_volatility = 1.0,
-                           .mu = 0.0,
-                           .factor_model = std::nullopt,
-                           .adverse_flow_lambda = 3.0,
-                           .adverse_flow_direction_correlation = 0.5,
-                           .adverse_flow_size = sim::UniformIntSpec{.min = 1, .max = 5}});
+        assets.push_back(sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
+                                        .initial_mid = mid,
+                                        .maker_fee_bps = 1.0,
+                                        .price_volatility = 1.0,
+                                        .mu = 0.0,
+                                        .factor_model = std::nullopt});
     }
     return sim::SimulationConfig{
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(2, 2),
         .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
-        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .agents = {sim::tests::maker_agent(mm::StrategyConfig{
-            .gamma = 2.0,
-            .k = math::Vector::Constant(2, 1.0),
-            .correlation = math::Matrix::Identity(2, 2),
-            .estimators = std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
-            .horizon = mm::ConstantHorizon{.tau = 1.0},
-            .quote_sizes = std::vector<mm::Quantity>(2, 10),
-            .tick_sizes = std::vector<mm::Price>(2, 0.01),
-            .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
-                       .max_portfolio_risk = std::nullopt},
-            .min_samples = 0})},
+        .agents = {sim::tests::informed_agent(3.0, 0.5),
+                   sim::tests::maker_agent(mm::StrategyConfig{
+                       .gamma = 2.0,
+                       .k = math::Vector::Constant(2, 1.0),
+                       .correlation = math::Matrix::Identity(2, 2),
+                       .estimators =
+                           std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
+                       .horizon = mm::ConstantHorizon{.tau = 1.0},
+                       .quote_sizes = std::vector<mm::Quantity>(2, 10),
+                       .tick_sizes = std::vector<mm::Price>(2, 0.01),
+                       .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
+                                  .max_portfolio_risk = std::nullopt},
+                       .min_samples = 0})},
         .master_seed = math::rng::Seed{seed},
         .dt = 1.0,
         .tick_count = tick_count};
@@ -380,8 +377,8 @@ TEST_CASE("The results describe the first market maker, whatever comes before it
     sim::SimulationRunner runner(config);
     runner.run();
 
-    REQUIRE(runner.world().agent_count() == 2);
+    REQUIRE(runner.world().agent_count() == 3);
     CHECK(runner.results().portfolio.final_breakdown.total() ==
-          runner.world().agent(1).account().ledger().portfolio().total());
+          runner.world().agent(2).account().ledger().portfolio().total());
     CHECK(runner.results().portfolio.final_breakdown.total() != 0.0);
 }

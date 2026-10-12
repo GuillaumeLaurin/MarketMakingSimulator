@@ -12,13 +12,10 @@
 #include <agents/agent.hpp>
 #include <mm/quote.hpp>
 
-#include <simulation/adverse_flow.hpp>
-#include <simulation/latency.hpp>
 #include <simulation/tick_loop.hpp>
 
 #include "math/rng/engine.hpp"
 #include "mm/types.hpp"
-#include "simulation/latency_config.hpp"
 #include "simulation/simulation_config.hpp"
 #include "simulation/simulation_observer.hpp"
 #include "simulation/world.hpp"
@@ -90,16 +87,13 @@ private:
 };
 
 TickLoop::TickLoop(World& world, const SimulationConfig& config)
-    : world_(world), dt_(config.dt), latency_(config.latency), assets_(config.assets),
-      previous_prices_(world.price_process().prices()),
-      quotes_changed_(world.asset_count(), false) {
+    : world_(world), dt_(config.dt), quotes_changed_(world.asset_count(), false) {
     if (!std::isfinite(dt_) || dt_ <= 0.0) {
         reject("dt must be finite and > 0");
     }
-    if (assets_.size() != world.asset_count()) {
+    if (config.assets.size() != world.asset_count()) {
         reject("the config does not match the number of assets of the world");
     }
-    validate_delay_spec(latency_.adverse_flow_delay);
 
     for (std::size_t i = 0; i < world.agent_count(); ++i) {
         const agents::AgentBehavior& behavior = config.agents.at(i).behavior;
@@ -111,11 +105,6 @@ TickLoop::TickLoop(World& world, const SimulationConfig& config)
     }
 
     for (mm::AssetId asset = 0; asset < world.asset_count(); ++asset) {
-        // A dry run on a COPY of the engine: it validates the whole
-        // adverse-flow spec now, without consuming the real stream.
-        math::rng::RngEngine probe = world.adverse_flow_engine(asset);
-        static_cast<void>(generate_adverse_flow(assets_[asset], 0.0, dt_, probe));
-
         engine_observers_.push_back(std::make_unique<EngineObserver>(*this, asset));
         mm::MatchingEngine& engine = world.matching_engine(asset);
         engine.add_observer(*engine_observers_.back());
@@ -131,7 +120,7 @@ TickLoop::TickLoop(World& world, const SimulationConfig& config)
                                                    .asks = {},
                                                    .recent_trades = {},
                                                    .signal = std::nullopt,
-                                                   .tick_size = assets_[asset].tick_size});
+                                                   .tick_size = config.assets[asset].tick_size});
     }
     signal_markets_ = plain_markets_;
 }
@@ -161,11 +150,7 @@ void TickLoop::step() {
         }
     }
 
-    // Adverse flow is scheduled BEFORE the agents act: at equal due
-    // times it is therefore executed first, against the previous tick's quotes.
-    schedule_adverse_flow(prices);
     run_agents(prices);
-    previous_prices_ = prices;
 
     for (const SimulationEvent& event : world_.event_queue().drain_until(time_)) {
         execute(event);
@@ -174,22 +159,6 @@ void TickLoop::step() {
     notify_quote_changes();
     for (SimulationObserver* observer : observers_) {
         observer->on_tick_end(time_);
-    }
-}
-
-void TickLoop::schedule_adverse_flow(const math::Vector& prices) {
-    for (mm::AssetId asset = 0; asset < world_.asset_count(); ++asset) {
-        const auto index = static_cast<Eigen::Index>(asset);
-        const double last_move = prices(index) - previous_prices_(index);
-
-        const std::vector<mm::MarketOrder> orders = generate_adverse_flow(
-            assets_[asset], last_move, dt_, world_.adverse_flow_engine(asset));
-        for (const mm::MarketOrder& order : orders) {
-            const double delay =
-                draw_delay(latency_.adverse_flow_delay, world_.latency_engine(asset));
-            world_.event_queue().schedule(time_ + delay,
-                                          AdverseOrder{.asset = asset, .order = order});
-        }
     }
 }
 
@@ -218,10 +187,7 @@ void TickLoop::execute(const SimulationEvent& event) {
         [this](const auto& request) {
             using Request = std::decay_t<decltype(request)>;
 
-            if constexpr (std::is_same_v<Request, AdverseOrder>) {
-                static_cast<void>(
-                    world_.matching_engine(request.asset).submit(mm::Order{request.order}));
-            } else if constexpr (std::is_same_v<Request, SubmitArrival>) {
+            if constexpr (std::is_same_v<Request, SubmitArrival>) {
                 execute_submit(request);
             } else {
                 static_assert(std::is_same_v<Request, CancelArrival>);
@@ -257,27 +223,25 @@ void TickLoop::execute_cancel(const CancelArrival& arrival) {
     static_cast<void>(world_.matching_engine(arrival.asset).cancel(arrival.id));
 }
 
-std::optional<OrderOwner>
-TickLoop::owner_of(mm::AssetId asset, mm::OrderId id, mm::Side side) const {
+std::optional<OrderOwner> TickLoop::owner_of(mm::AssetId asset, mm::OrderId id) const {
     if (const std::optional<OrderOwner> owner = registry_.find(asset, id)) {
         return owner;
     }
-    // An id that is not recorded is the order being submitted right now, on its side.
-    if (submission_.has_value() && submission_->side == side) {
+    // An id that is not recorded is the order being submitted right now.
+    if (submission_.has_value()) {
         return OrderOwner{.agent = submission_->agent, .ticket = submission_->ticket};
     }
     return std::nullopt;
 }
 
 void TickLoop::on_trade(mm::AssetId asset, const mm::Trade& trade) {
+    const bool started_by_maker = submission_.has_value() && observed_maker_ == submission_->agent;
     const auto settle = [&](mm::OrderId id, mm::Side side) {
-        const std::optional<OrderOwner> owner = owner_of(asset, id, side);
-        if (!owner.has_value()) {
-            return; // adverse flow
-        }
-        AgentRuntime& runtime = world_.agent(owner->agent);
+        // Every order in a book belongs to an agent: no owner would be a bug, and throws.
+        const OrderOwner owner = owner_of(asset, id).value();
+        AgentRuntime& runtime = world_.agent(owner.agent);
         const bool aggressor = !registry_.find(asset, id).has_value();
-        runtime.on_fill(owner->ticket,
+        runtime.on_fill(owner.ticket,
                         agents::Fill{.asset = asset,
                                      .id = id,
                                      .side = side,
@@ -289,13 +253,13 @@ void TickLoop::on_trade(mm::AssetId asset, const mm::Trade& trade) {
         } else if (!runtime.orders().ticket_of(asset, id).has_value()) {
             registry_.remove(asset, id); // filled in full
         }
-        touch(owner->agent, asset);
+        touch(owner.agent, asset);
     };
     settle(trade.buy_order_id, mm::Side::Buy);
     settle(trade.sell_order_id, mm::Side::Sell);
 
     for (SimulationObserver* observer : observers_) {
-        observer->on_trade(asset, trade, submission_.has_value());
+        observer->on_trade(asset, trade, started_by_maker);
     }
 }
 

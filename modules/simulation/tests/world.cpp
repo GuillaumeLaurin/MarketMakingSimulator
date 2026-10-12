@@ -50,9 +50,7 @@ sim::AssetSpec asset(mm::Price mid,
                           .maker_fee_bps = fee_bps,
                           .price_volatility = volatility,
                           .mu = mu,
-                          .factor_model = std::move(factor),
-                          .adverse_flow_lambda = 1.0,
-                          .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}};
+                          .factor_model = std::move(factor)};
 }
 
 mm::StrategyConfig strategy_for(std::size_t assets) {
@@ -83,15 +81,13 @@ sim::SimulationConfig config_of(std::vector<sim::AssetSpec> assets,
     }
     const std::size_t n = assets.size();
     const auto size = static_cast<Eigen::Index>(n);
-    return sim::SimulationConfig{
-        .assets = std::move(assets),
-        .correlation = math::Matrix::Identity(size, size),
-        .process = process,
-        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .agents = {sim::tests::maker_agent(strategy_for(n))},
-        .master_seed = math::rng::Seed{seed},
-        .dt = 1.0,
-        .tick_count = 10};
+    return sim::SimulationConfig{.assets = std::move(assets),
+                                 .correlation = math::Matrix::Identity(size, size),
+                                 .process = process,
+                                 .agents = {sim::tests::maker_agent(strategy_for(n))},
+                                 .master_seed = math::rng::Seed{seed},
+                                 .dt = 1.0,
+                                 .tick_count = 10};
 }
 
 sim::FactorModelAssetData factor_data(double beta, double idio) {
@@ -194,11 +190,9 @@ TEST_CASE("An unknown asset id throws std::out_of_range on every per-asset acces
 
     CHECK_THROWS_AS(world.matching_engine(1), std::out_of_range);
     CHECK_THROWS_AS(const_world.matching_engine(1), std::out_of_range);
-    CHECK_THROWS_AS(world.adverse_flow_engine(1), std::out_of_range);
-    CHECK_THROWS_AS(world.latency_engine(1), std::out_of_range);
 }
 
-TEST_CASE("The event queue is one empty queue for every kind of request, all assets",
+TEST_CASE("The event queue is one empty queue for every kind of message, all assets",
           "[simulation][world]") {
     sim::World world(config_of({asset(100.0, 0.2), asset(50.0, 0.3)}));
 
@@ -210,10 +204,10 @@ TEST_CASE("The event queue is one empty queue for every kind of request, all ass
         sim::CancelArrival{.agent = 0, .asset = 1, .id = mm::OrderId{7}, .side = mm::Side::Buy});
     world.event_queue().schedule(
         3.0,
-        sim::AdverseOrder{.asset = 1,
-                          .order = mm::MarketOrder{.side = mm::Side::Buy,
-                                                   .quantity = 4,
-                                                   .time_in_force = mm::MarketTimeInForce::IOC}});
+        sim::SubmitArrival{
+            .agent = 0,
+            .ticket = sim::Ticket{2},
+            .order = mms::agents::SubmitMarket{.asset = 1, .side = mm::Side::Buy, .quantity = 4}});
     world.event_queue().schedule(
         1.0,
         sim::SubmitArrival{.agent = 0,
@@ -229,23 +223,24 @@ TEST_CASE("The event queue is one empty queue for every kind of request, all ass
 
     const auto rest = world.event_queue().drain_until(10.0);
     REQUIRE(rest.size() == 2);
-    CHECK(std::holds_alternative<sim::CancelArrival>(rest[0]));  // due at 2.0
-    REQUIRE(std::holds_alternative<sim::AdverseOrder>(rest[1])); // due at 3.0
-    CHECK(std::get<sim::AdverseOrder>(rest[1]).order.quantity == 4);
+    CHECK(std::holds_alternative<sim::CancelArrival>(rest[0]));   // due at 2.0
+    REQUIRE(std::holds_alternative<sim::SubmitArrival>(rest[1])); // due at 3.0
+    CHECK(
+        std::get<mms::agents::SubmitMarket>(std::get<sim::SubmitArrival>(rest[1]).order).quantity ==
+        4);
     CHECK(world.event_queue().empty());
 }
 
 TEST_CASE("Events due at the same instant come out in the order they were scheduled",
           "[simulation][world]") {
-    // This is what lets the tick loop make adverse flow hit the stale quotes
-    // first: it schedules the adverse order before the quote requests.
+    // This is what lets an agent listed first reach the exchange first.
     sim::World world(config_of({asset(100.0, 0.2)}));
     world.event_queue().schedule(
         1.0,
-        sim::AdverseOrder{.asset = 0,
-                          .order = mm::MarketOrder{.side = mm::Side::Sell,
-                                                   .quantity = 1,
-                                                   .time_in_force = mm::MarketTimeInForce::IOC}});
+        sim::SubmitArrival{
+            .agent = 0,
+            .ticket = sim::Ticket{1},
+            .order = mms::agents::SubmitMarket{.asset = 0, .side = mm::Side::Sell, .quantity = 1}});
     world.event_queue().schedule(
         1.0,
         sim::CancelArrival{.agent = 0, .asset = 0, .id = mm::OrderId{1}, .side = mm::Side::Buy});
@@ -253,7 +248,7 @@ TEST_CASE("Events due at the same instant come out in the order they were schedu
     const auto due = world.event_queue().drain_until(1.0);
 
     REQUIRE(due.size() == 2);
-    CHECK(std::holds_alternative<sim::AdverseOrder>(due[0]));
+    CHECK(std::holds_alternative<sim::SubmitArrival>(due[0]));
     CHECK(std::holds_alternative<sim::CancelArrival>(due[1]));
 }
 
@@ -266,8 +261,6 @@ TEST_CASE("Two Worlds built from the same config share price paths and RNG strea
     second.price_process().advance(1.0);
 
     CHECK(first.price_process().prices() == second.price_process().prices());
-    CHECK(first.adverse_flow_engine(0)() == second.adverse_flow_engine(0)());
-    CHECK(first.latency_engine(1)() == second.latency_engine(1)());
 }
 
 TEST_CASE("A different master seed gives different price paths and RNG streams",
@@ -279,32 +272,6 @@ TEST_CASE("A different master seed gives different price paths and RNG streams",
     second.price_process().advance(1.0);
 
     CHECK_FALSE(first.price_process().prices() == second.price_process().prices());
-    CHECK(first.adverse_flow_engine(0)() != second.adverse_flow_engine(0)());
-}
-
-TEST_CASE("Different assets and different subsystems draw from different streams",
-          "[simulation][world]") {
-    sim::World world(config_of({asset(100.0, 0.2), asset(100.0, 0.2)}));
-
-    const auto asset_0_adverse = world.adverse_flow_engine(0)();
-    const auto asset_1_adverse = world.adverse_flow_engine(1)();
-    const auto asset_0_latency = world.latency_engine(0)();
-
-    CHECK(asset_0_adverse != asset_1_adverse);
-    CHECK(asset_0_adverse != asset_0_latency);
-}
-
-TEST_CASE("The handed-out engines persist: the stream advances instead of restarting",
-          "[simulation][world]") {
-    sim::World world(config_of({asset(100.0, 0.2)}));
-
-    math::rng::RngEngine& engine = world.adverse_flow_engine(0);
-    const auto first = engine();
-    const auto second =
-        world.adverse_flow_engine(0)(); // asked again: same stream, one step further
-
-    CHECK(&engine == &world.adverse_flow_engine(0));
-    CHECK(first != second);
 }
 
 TEST_CASE("The constructor rejects a config with no assets", "[simulation][world]") {
@@ -398,32 +365,11 @@ TEST_CASE("Symbols differing only by case are two assets", "[simulation][world][
     CHECK_NOTHROW(sim::World(config));
 }
 
-TEST_CASE("Adding an asset, or reordering the basket, leaves an asset's own streams alone",
-          "[simulation][world][symbol]") {
-    const sim::SimulationConfig small =
-        config_of({named("AAPL", asset(100.0, 0.2)), named("MSFT", asset(50.0, 0.3))});
-    const sim::SimulationConfig bigger = config_of({named("MSFT", asset(50.0, 0.3)),
-                                                    named("NEWCO", asset(20.0, 0.5)),
-                                                    named("AAPL", asset(100.0, 0.2))});
+TEST_CASE("Renaming an asset changes its price path", "[simulation][world][symbol]") {
+    const sim::SimulationConfig a = config_of({named("AAPL", asset(100.0, 0.2))});
+    const sim::SimulationConfig b = config_of({named("AAPL2", asset(100.0, 0.2))});
 
-    sim::World a(small);
-    sim::World b(bigger);
-
-    // AAPL is index 0 in one world and 2 in the other: the streams still agree.
-    CHECK(a.adverse_flow_engine(0) == b.adverse_flow_engine(2));
-    CHECK(a.latency_engine(0) == b.latency_engine(2));
-    CHECK(a.adverse_flow_engine(1) == b.adverse_flow_engine(0)); // MSFT, likewise
-    // And it is its own stream, not another asset's.
-    CHECK(a.adverse_flow_engine(0) != a.adverse_flow_engine(1));
-    CHECK(b.adverse_flow_engine(1) != b.adverse_flow_engine(2));
-}
-
-TEST_CASE("Renaming an asset changes its streams", "[simulation][world][symbol]") {
-    sim::World a(config_of({named("AAPL", asset(100.0, 0.2))}));
-    sim::World b(config_of({named("AAPL2", asset(100.0, 0.2))}));
-
-    CHECK(a.adverse_flow_engine(0) != b.adverse_flow_engine(0));
-    CHECK(a.latency_engine(0) != b.latency_engine(0));
+    CHECK(price_after(a, "AAPL", 3) != price_after(b, "AAPL2", 3));
 }
 
 TEST_CASE("A random-walk price path does not depend on the other assets in the basket",
@@ -674,4 +620,16 @@ TEST_CASE("Two agents with different names draw different delays", "[simulation]
     REQUIRE(first.scheduled.size() == second.scheduled.size());
     REQUIRE_FALSE(first.scheduled.empty());
     CHECK(first.scheduled[0].due != second.scheduled[0].due);
+}
+
+TEST_CASE(
+    "The world refuses an informed trader whose parameters are invalid, before the first tick",
+    "[simulation][world][agents]") {
+    sim::SimulationConfig config = config_with_agents({"a"});
+    config.agents[0] = sim::tests::informed_agent(1.0, 2.0); // a correlation is in [0, 1]
+
+    CHECK_THROWS_AS(sim::World(config), std::invalid_argument);
+
+    config.agents[0] = sim::tests::informed_agent(1.0, 0.5, sim::ExponentialDelaySpec{.mean = 0.0});
+    CHECK_THROWS_AS(sim::World(config), std::invalid_argument); // and a delay is valid
 }

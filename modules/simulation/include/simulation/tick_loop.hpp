@@ -3,12 +3,12 @@
 
 /// \file
 /// TickLoop: advances a World one tick at a time, in a fixed order: the true prices move
-/// and every account is marked, adverse flow is scheduled, each agent whose decision
-/// period has come round acts (in the order of the config) and its messages are scheduled
-/// after their own latency, then everything due is executed in (due time, scheduling
-/// order) order. Because adverse flow is scheduled before the agents act, at equal due
-/// times it reaches the exchange first and hits the previous tick's, now stale, quotes:
-/// the adverse selection this whole simulation exists to measure.
+/// and every account is marked, each agent whose decision period has come round acts (in the
+/// order of the config) and its messages are scheduled after their own latency, then
+/// everything due is executed in (due time, scheduling order) order. An agent listed before
+/// another therefore reaches the exchange first at equal due times: an informed trader listed
+/// before the market maker hits the previous tick, now stale, quotes, the adverse selection
+/// this whole simulation exists to measure.
 ///
 /// Events execute at tick boundaries: one due between two ticks runs at the next one.
 ///
@@ -20,8 +20,8 @@
 /// the true price only as the signal of the market maker and of informed flow.
 ///
 /// The observers still speak of one market maker: the first market maker of the config.
-/// Its quotes are the ones notified and returned by live_quotes(), and a trade started by
-/// any agent counts as the market maker's.
+/// Its quotes are the ones notified and returned by live_quotes(), and a trade counts as the
+/// market maker.s when its order started it.
 
 #include <cstddef>
 #include <cstdint>
@@ -41,17 +41,14 @@
 #include <simulation/world.hpp>
 
 #include "math/types.hpp"
-#include "simulation/asset_spec.hpp"
-#include "simulation/latency_config.hpp"
 
 namespace mms::simulation {
 
 class MMS_SIMULATION_EXPORT TickLoop {
 public:
     /// Borrows `world` (it must outlive the loop) and takes what it needs from `config`:
-    /// dt, the adverse-flow parameters of each asset and the tick sizes. Validates dt and
-    /// the adverse-flow specs up front, so a bad config fails here and not at some tick
-    /// deep into the run. Throws std::invalid_argument.
+    /// dt and the tick sizes. Validates dt up front, so a bad config fails here and not at
+    /// some tick deep into the run. Throws std::invalid_argument.
     TickLoop(World& world, const SimulationConfig& config);
 
     TickLoop(const TickLoop&) = delete;
@@ -90,26 +87,21 @@ private:
         mm::Quantity filled = 0;
     };
 
-    void schedule_adverse_flow(const math::Vector& prices);
     void run_agents(const math::Vector& prices);
     void execute(const SimulationEvent& event);
     void execute_submit(const SubmitArrival& arrival);
     void execute_cancel(const CancelArrival& arrival);
     void on_trade(mm::AssetId asset, const mm::Trade& trade);
     void on_order_cancelled(mm::AssetId asset, mm::OrderId id);
-    [[nodiscard]] std::optional<OrderOwner>
-    owner_of(mm::AssetId asset, mm::OrderId id, mm::Side side) const;
+    [[nodiscard]] std::optional<OrderOwner> owner_of(mm::AssetId asset, mm::OrderId id) const;
     void touch(AgentId agent, mm::AssetId asset);
     void notify_quote_changes();
 
     World& world_;
     double dt_;
-    LatencyConfig latency_;
-    std::vector<AssetSpec> assets_;
 
     double time_ = 0.0;
     std::int64_t ticks_ = 0;
-    math::Vector previous_prices_;
     OrderRegistry registry_;
     std::optional<Submission> submission_;
     std::optional<AgentId> observed_maker_;

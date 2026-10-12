@@ -27,15 +27,9 @@
 
 namespace mms::simulation {
 
-/// One adverse-flow order on its way to the exchange of one asset.
-struct AdverseOrder {
-    mm::AssetId asset;
-    mm::MarketOrder order;
-};
-
-/// Everything that can be in flight: the messages of the agents and adverse flow. One
-/// shared queue gives a single, time-ordered view of all of it (SIM27).
-using SimulationEvent = std::variant<AdverseOrder, SubmitArrival, CancelArrival>;
+/// Everything that can be in flight: the messages of the agents. One shared queue gives a
+/// single, time-ordered view of all of it (SIM27).
+using SimulationEvent = std::variant<SubmitArrival, CancelArrival>;
 
 using EventQueue = core::LatencyQueue<SimulationEvent>;
 
@@ -43,8 +37,7 @@ class MMS_SIMULATION_EXPORT World {
 public:
     /// Builds everything from `config`: the CovarianceMatrix, the one
     /// PriceProcess, one MatchingEngine per asset, one AgentRuntime per agent
-    /// (each with its streams), and one RngEngine per asset for adverse flow and for
-    /// its latency. Validates the agent setup first (validate_agent_setup). Throws
+    /// (each with its streams). Validates the agent setup first (validate_agent_setup). Throws
     /// std::invalid_argument for anything inconsistent: `config.assets` empty or its size
     /// disagreeing with `correlation`'s dimension, or a market maker whose strategy has another
     /// number of assets; an asset without a symbol, or two assets with the same symbol; a
@@ -79,31 +72,15 @@ public:
     [[nodiscard]] const AgentRuntime& agent(AgentId id) const { return agents_.at(id); }
 
     /// The one queue of everything still on its way to an exchange: the
-    /// messages of the agents and the adverse-flow orders,
+    /// messages of the agents,
     /// all assets together, released in (due time, insertion order) order.
     [[nodiscard]] EventQueue& event_queue() noexcept { return event_queue_; }
-
-    /// This asset's own RngEngine for drawing adverse-flow occurrences
-    /// (arrival count, direction, size). Persists across ticks: the caller
-    /// must hold this reference, not re-derive it, so the stream actually
-    /// advances.
-    [[nodiscard]] math::rng::RngEngine& adverse_flow_engine(mm::AssetId asset) {
-        return adverse_flow_engines_.at(asset);
-    }
-
-    /// This asset.s own RngEngine for drawing the delay of adverse-flow orders. The agents
-    /// have latency streams of their own.
-    [[nodiscard]] math::rng::RngEngine& latency_engine(mm::AssetId asset) {
-        return latency_engines_.at(asset);
-    }
 
 private:
     std::unique_ptr<math::process::PriceProcess> price_process_;
     std::vector<mm::MatchingEngine> engines_;
     EventQueue event_queue_;
     std::vector<AgentRuntime> agents_;
-    std::vector<math::rng::RngEngine> adverse_flow_engines_;
-    std::vector<math::rng::RngEngine> latency_engines_;
 };
 
 } // namespace mms::simulation

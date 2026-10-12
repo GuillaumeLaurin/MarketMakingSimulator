@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -33,8 +34,17 @@ public:
         last_orders.assign(view.open_orders.begin(), view.open_orders.end());
         last_factors.assign(view.factors.begin(), view.factors.end());
         last_asset_count = view.assets.size();
+        last_tick_sizes.clear();
+        last_signals.clear();
+        for (const agents::AssetView& market : view.assets) {
+            last_tick_sizes.push_back(market.tick_size);
+            last_signals.push_back(market.signal);
+        }
         draws.push_back(rng());
         out = to_ask;
+        if (once) {
+            to_ask.clear();
+        }
     }
 
     void on_fill(const agents::Fill& fill) override { fills.push_back(fill); }
@@ -44,6 +54,9 @@ public:
     }
 
     std::vector<agents::Action> to_ask;
+
+    /// Ask for `to_ask` once, at the next act, and then for nothing.
+    bool once = false;
 
     int acts = 0;
     std::int64_t last_tick = 0;
@@ -55,6 +68,8 @@ public:
     std::vector<agents::OpenOrder> last_orders;
     std::vector<double> last_factors;
     std::size_t last_asset_count = 0;
+    std::vector<mm::Price> last_tick_sizes;
+    std::vector<std::optional<mm::Price>> last_signals;
     std::vector<std::uint64_t> draws;
     std::vector<agents::Fill> fills;
     std::vector<std::pair<agents::Action, agents::RejectReason>> rejects;

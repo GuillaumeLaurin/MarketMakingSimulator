@@ -281,33 +281,30 @@ struct TradeCounter final : sim::SimulationObserver {
 sim::SimulationConfig two_asset_config() {
     std::vector<sim::AssetSpec> assets;
     for (const double mid : {100.0, 150.0}) {
-        assets.push_back(
-            sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
-                           .initial_mid = mid,
-                           .maker_fee_bps = 1.0,
-                           .price_volatility = 1.0,
-                           .mu = 0.0,
-                           .factor_model = std::nullopt,
-                           .adverse_flow_lambda = 3.0,
-                           .adverse_flow_direction_correlation = 0.5,
-                           .adverse_flow_size = sim::UniformIntSpec{.min = 1, .max = 5}});
+        assets.push_back(sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
+                                        .initial_mid = mid,
+                                        .maker_fee_bps = 1.0,
+                                        .price_volatility = 1.0,
+                                        .mu = 0.0,
+                                        .factor_model = std::nullopt});
     }
     return sim::SimulationConfig{
         .assets = std::move(assets),
         .correlation = math::Matrix::Identity(2, 2),
         .process = sim::RandomWalkSpec{.dynamics = mms::math::process::Dynamics::Arithmetic},
-        .latency = {.adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .agents = {sim::tests::maker_agent(mm::StrategyConfig{
-            .gamma = 2.0,
-            .k = math::Vector::Constant(2, 1.0),
-            .correlation = math::Matrix::Identity(2, 2),
-            .estimators = std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
-            .horizon = mm::ConstantHorizon{.tau = 1.0},
-            .quote_sizes = std::vector<mm::Quantity>(2, 10),
-            .tick_sizes = std::vector<mm::Price>(2, 0.01),
-            .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
-                       .max_portfolio_risk = std::nullopt},
-            .min_samples = 0})},
+        .agents = {sim::tests::informed_agent(3.0, 0.5),
+                   sim::tests::maker_agent(mm::StrategyConfig{
+                       .gamma = 2.0,
+                       .k = math::Vector::Constant(2, 1.0),
+                       .correlation = math::Matrix::Identity(2, 2),
+                       .estimators =
+                           std::vector<mm::EstimatorSpec>(2, mm::ConstantSpec{.sigma = 0.2}),
+                       .horizon = mm::ConstantHorizon{.tau = 1.0},
+                       .quote_sizes = std::vector<mm::Quantity>(2, 10),
+                       .tick_sizes = std::vector<mm::Price>(2, 0.01),
+                       .limits = {.max_abs_position = std::vector<mm::Quantity>(2, 1000),
+                                  .max_portfolio_risk = std::nullopt},
+                       .min_samples = 0})},
         .master_seed = math::rng::Seed{11},
         .dt = 1.0,
         .tick_count = 40};
@@ -320,7 +317,7 @@ TEST_CASE("Over a real run the results satisfy the identities that must always h
     const sim::SimulationConfig config = two_asset_config();
     sim::World world(config);
     sim::TickLoop loop(world, config);
-    sim::ResultsObserver observer(world.agent(0).account().ledger());
+    sim::ResultsObserver observer(world.agent(1).account().ledger());
     TradeCounter counter;
     loop.add_observer(observer);
     loop.add_observer(counter);
@@ -330,7 +327,7 @@ TEST_CASE("Over a real run the results satisfy the identities that must always h
     }
 
     const sim::Results& results = observer.results();
-    const mm::PnlLedger& ledger = world.agent(0).account().ledger();
+    const mm::PnlLedger& ledger = world.agent(1).account().ledger();
     const sim::AssetResults& portfolio = results.portfolio;
 
     // One increment per tick, one level per tick plus the starting one.

@@ -16,6 +16,8 @@ namespace mms::math::rng {
 
 /// Append only: the value of a subsystem is mixed into every stream, so reordering
 /// or inserting one would change the random numbers of every saved run.
+/// AdverseFlow and Latency were the per-asset streams of the first simulation loop; nothing
+/// draws from them any more, but their values stay taken.
 enum class Subsystem : std::uint8_t {
     Price,
     AdverseFlow,

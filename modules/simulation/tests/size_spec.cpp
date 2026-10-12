@@ -9,7 +9,6 @@
 #include <agents/size_spec.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include <simulation/adverse_flow.hpp>
 #include <simulation/size_spec.hpp>
 
 namespace sim = mms::simulation;
@@ -26,10 +25,4 @@ TEST_CASE("The simulation spellings of the size specs are the agents' types",
 
     REQUIRE(std::holds_alternative<agents::UniformIntSpec>(from_agents));
     CHECK(std::get<agents::UniformIntSpec>(from_agents).max == 3);
-}
-
-TEST_CASE("The simulation spellings of the draws are the agents' functions",
-          "[simulation][adverse_flow]") {
-    // The same function: the address is the same.
-    CHECK(&sim::draw_size == &agents::draw_size);
 }
