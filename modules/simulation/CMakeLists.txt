@@ -13,4 +13,5 @@ mms_add_module(simulation
         MMS::core
         MMS::math
         MMS::mm
+        MMS::agents
 )
