@@ -105,57 +105,11 @@ foreach(_mod IN LISTS MMS_MODULE_NAMES)
 endforeach()
 
 # --- application (headless CLI frontend) ------------------------------------------
-# The only place that knows a usage context: CLI parsing, config formats, console
-# / file output. Turns arguments into a SimulationConfig, drives MMS::simulation,
-# attaches concrete observers and prints a summary. A GUI would be a sibling
-# application reusing MMS::simulation, never depending on this target.
-#
-#   include/   application public headers
-#   src/*.cpp  application sources + main()
+# The only places that know a usage context: a command line, a screen. Each one turns what
+# the user gives it into calls on MMS::application and shows what comes back. They do not
+# depend on one another. A graphical front end would be apps/gui, next to apps/cli.
 if(MMS_BUILD_APP)
-    include(MmsResourceAndManifest)
-
-    file(GLOB_RECURSE _mms_app_sources CONFIGURE_DEPENDS
-        "${PROJECT_SOURCE_DIR}/src/*.cpp"
-        "${PROJECT_SOURCE_DIR}/src/*.cxx"
-        "${PROJECT_SOURCE_DIR}/src/*.cc")
-
-    # Placeholder entry point so the target builds before real code exists.
-    if(NOT _mms_app_sources)
-        set(_mms_app_sources "${PROJECT_BINARY_DIR}/gen/mms_app_main_placeholder.cpp")
-        if(NOT EXISTS "${_mms_app_sources}")
-            file(WRITE "${_mms_app_sources}"
-                "#include <mms/version.hpp>\n"
-                "#include <iostream>\n\n"
-                "int main()\n{\n"
-                "    std::cout << \"Market Making Simulator \" << mms::version_string << '\\n';\n"
-                "    return 0;\n"
-                "}\n")
-        endif()
-    endif()
-
-    add_executable(mms_app ${_mms_app_sources})
-    add_executable(MMS::app ALIAS mms_app)
-    set_target_properties(mms_app PROPERTIES OUTPUT_NAME mms)
-
-    target_include_directories(mms_app PRIVATE
-        "${PROJECT_SOURCE_DIR}/include"     # application public headers
-        "${PROJECT_SOURCE_DIR}/src")        # private headers next to the sources
-
-    target_link_libraries(mms_app
-        PRIVATE
-            "$<BUILD_INTERFACE:mms_common>"
-            MMS::simulation                 # engine; brings core/math/mms transitively
-            CLI11::CLI11                    # command-line argument parsing
-            fmt::fmt                        # console output
-            tomlplusplus::tomlplusplus      # simulation config files (TOML)
-            nlohmann_json::nlohmann_json)    # results / scenario export (JSON)
-
-    mms_resource_and_manifest(mms_app NAME "Market Making Simulator" TYPE Executable)
-
-    if(MMS_INSTALL)
-        install(TARGETS mms_app RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-    endif()
+    add_subdirectory(apps/cli)
 endif()
 
 # --- tests / benchmarks (co-located under each module) -----------------------
