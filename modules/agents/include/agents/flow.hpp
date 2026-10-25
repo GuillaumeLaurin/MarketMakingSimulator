@@ -3,7 +3,7 @@
 
 /// \file
 /// The random draws behind an agent that trades at random: how many orders arrive in a
-/// stretch of time, which way each goes, functions of their
+/// stretch of time, which way each goes, and how big each is. Pure functions of their
 /// inputs and of the engine they are given, so each can be tested with nothing but an
 /// RngEngine.
 ///
