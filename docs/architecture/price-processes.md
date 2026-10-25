@@ -1,8 +1,9 @@
 # Price processes
 
 The "true" price of every asset is not the order book's price. It is a hidden
-stochastic process that the market maker never sees directly and that adverse flow
-reacts to. This page is about that process.
+stochastic process. Most agents never see it. The market maker and informed flow are
+given it as a signal, and the factor traders are given the moves of its common factors.
+This page is about that process.
 
 ## One process for the whole basket
 
@@ -66,6 +67,11 @@ for once assets can be listed during a run (see [dynamic assets](future/dynamic-
 
 Factors are independent on purpose. Correlated factors would give back part of the
 saving, and nothing needed them.
+
+The model keeps the draw of each factor for the last step and exposes it with
+`factor_increments()`, which is empty for a process that has no factors. The loop adds those
+moves up for each factor trader until it acts. They are the true moves, not an estimate: a
+factor trader is a trader who knows where the common risk went.
 
 ## Arithmetic and geometric dynamics
 

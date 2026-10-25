@@ -68,7 +68,7 @@ Refs #12
 ```
 
 - `type`: `feat`, `fix`, `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`
-- `scope`: the affected area, `core`, `math`, `mms`, `simulation`, `app`,
+- `scope`: the affected area, `core`, `math`, `mm`, `agents`, `simulation`, `app`,
   `cmake`, `ci`, `docs`
 - Link issues with `Refs #12` or `Closes #12`.
 
@@ -95,9 +95,9 @@ bash ci/check-format.sh          # must pass; CI fails on any diff
 bash ci/check-tidy.sh dev        # advisory for now
 ```
 
-- Respect the dependency direction: `app` then `MMS::simulation` then `MMS::mm`
-  then `{ MMS::core, MMS::math }`. `MMS::mm` and `MMS::simulation` must not
-  include any CLI, file-I/O or UI header.
+- Respect the dependency direction: `app` then `MMS::simulation` then `MMS::agents`
+  then `MMS::mm` then `{ MMS::core, MMS::math }`. `MMS::mm`, `MMS::agents` and
+  `MMS::simulation` must not include any CLI, file-I/O or UI header.
 - Third-party libraries are used only through the imported targets declared in
   `cmake/Modules/MmsDependencies.cmake`, after adding them to `vcpkg.json`.
 

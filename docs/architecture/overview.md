@@ -1,12 +1,12 @@
 # Overview
 
 MMS simulates a market maker. A price moves, the maker quotes around it, other
-participants trade against those quotes, and at the end we count what the maker
-made and what it risked. Everything else in the project serves that loop.
+participants trade against those quotes, and at the end we count what each of them made
+and what it risked. Everything else in the project serves that loop.
 
 ## Modules
 
-There are four modules that do the work and two that support them. Each one is
+There are five modules that do the work and two that support them. Each one is
 its own library under `modules/<name>/`, with public headers in
 `include/<name>/`, sources in `src/`, tests in `tests/` and benchmarks in `bench/`.
 
@@ -15,16 +15,21 @@ its own library under `modules/<name>/`, with public headers in
 | `core` | Order book, matching engine, latency queue, order and trade types. Knows nothing about prices or strategies. |
 | `math` | Random numbers, distributions, price processes, covariance, running statistics, the Avellaneda-Stoikov formulas. Knows nothing about markets. |
 | `mm` | Market-making logic: the quoting strategy, inventory risk limits, requoting, positions and the P&L ledger. |
-| `simulation` | The engine: builds a world from a config and advances it tick by tick. |
+| `agents` | What trades: the agent interface, what an agent is shown and can ask for, the market maker as an agent, and the bots. |
+| `simulation` | The engine: builds a world from a config, holds the accounts and applies the rules of the exchange, and advances it tick by tick. |
 | `logging` | Leveled logging with pluggable sinks. |
 | `diagnostics` | Exceptions that capture a stack trace where they are thrown. |
 
 ```mermaid
 flowchart TB
     subgraph engine
+        simulation --> agents
         simulation --> mm
         simulation --> core
         simulation --> math
+        agents --> mm
+        agents --> core
+        agents --> math
         mm --> core
         mm --> math
     end
@@ -37,6 +42,9 @@ flowchart TB
 Dependencies only point down. `core` and `math` do not know each other, and neither
 knows `mm`. That is checked by the build: a header that reaches the wrong way does
 not compile, because the target is not linked.
+
+`agents` sits between `mm` and `simulation`: it uses the strategy of `mm`, and `simulation`
+holds the money. An agent never touches an account or an exchange.
 
 `logging` and `diagnostics` are standalone: they do not depend on each other or on the
 rest of the project, and nothing in the engine uses them yet. They exist so that the

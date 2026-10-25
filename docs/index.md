@@ -16,19 +16,20 @@ They have diagrams, and those render on GitHub but not here.
 | `MMS::math` | random numbers, distributions, price processes, covariance, statistics, the Avellaneda-Stoikov formulas |
 | `MMS::core` | order book, matching engine, latency queue, order and trade types |
 | `MMS::mm` | market-making logic: quoting, inventory and risk, positions and P&L |
-| `MMS::simulation` | the engine: world, tick loop, adverse flow, latency, observers, results, runner. No I/O, no CLI, no UI |
+| `MMS::agents` | what trades: the agent interface, what an agent sees and can ask for, the market maker as an agent, the bots |
+| `MMS::simulation` | the engine: world, accounts and the rules of the exchange, tick loop, latency, observers, results, runner. No I/O, no CLI, no UI |
 | `MMS::logging` | leveled logging with pluggable sinks |
 | `MMS::diagnostics` | exceptions that capture a stack trace where they are thrown |
 | application (`src/`) | the command line frontend. Not written yet |
 
 Dependencies only point down:
-`app` then `MMS::simulation` then `MMS::mm` then `{ MMS::core, MMS::math }`.
+`app` then `MMS::simulation` then `MMS::agents` then `MMS::mm` then `{ MMS::core, MMS::math }`.
 `MMS::logging` and `MMS::diagnostics` stand alone, and the engine uses neither of them yet.
 
 ## Navigating this reference
 
 Use the **Namespaces** and **Classes** tabs above. Each module lives in its own namespace
-(`mms::core`, `mms::math`, `mms::mm`, `mms::simulation`, `mms::logging`,
+(`mms::core`, `mms::math`, `mms::mm`, `mms::agents`, `mms::simulation`, `mms::logging`,
 `mms::diagnostics`) and its public API is the set of types tagged with that module's
 export macro.
 
@@ -38,6 +39,8 @@ export macro.
 * `simulation/simulation_config.hpp`: everything a run needs.
 * `simulation/world.hpp` and `simulation/tick_loop.hpp`: what a run holds and the order of
   events inside a tick.
+* `agents/agent.hpp` and `agents/agent_view.hpp`: the interface an agent implements and what it is
+  shown.
 * `mm/quoting_strategy.hpp`: the interface a strategy implements.
 
 ## Conventions

@@ -26,15 +26,21 @@ What a run does now:
 - Moves the true prices of a basket of correlated assets, with a random walk or a factor
   model, arithmetic or geometric.
 - Runs one order book and matching engine per asset.
-- Quotes with an Avellaneda-Stoikov strategy over the whole portfolio, with risk limits.
-- Sends random adverse market orders at the quotes, with configurable latency on every
-  message.
-- Keeps a P&L ledger and reports its statistics, drawdown and trade counts.
+- Runs agents: a market maker that quotes with an Avellaneda-Stoikov strategy over the whole
+  portfolio, with risk limits, and bots (informed flow, a noise trader, a trend follower, a
+  mean reverter, a factor trader). Each has its own cash, speed, delays and account, under
+  the same rules.
+- Checks every order against the account, keeps track of who owns each resting order, and
+  never lets an agent trade with itself.
+- Shows each agent the best levels of the books, the latest trades and, if it is meant to
+  have it, the true price, as of some time ago if the agent is slow.
+- Keeps a P&L ledger per agent and reports its statistics, drawdown, trade counts and
+  refusals.
 - Replays exactly from a seed.
 
-What it is turning into: a sandbox where bots with different habits trade together, a
-person can take a seat as a trader or a market maker, assets can be listed while it runs,
-and the whole thing can be saved and resumed. None of that is built. It is written up in
+What it is turning into: a sandbox where a person can take a seat among the bots as a trader
+or a market maker, assets can be listed while it runs, and the whole thing can be saved and
+resumed. The bots are built. None of the rest is. It is written up in
 [`docs/architecture/future`](docs/architecture/future/).
 
 ## Architecture
@@ -50,13 +56,14 @@ diagrams.
 | [Price processes](docs/architecture/price-processes.md) | Random walk, factor model, arithmetic and geometric |
 | [Order book and matching](docs/architecture/order-book-and-matching.md) | The book, the engine, the latency queue |
 | [Market making](docs/architecture/market-making.md) | Quoting, risk, requoting, P&L |
+| [Agents](docs/architecture/agents.md) | What an agent sees, the account rules, ownership, the bots, timing |
 | [The simulation loop](docs/architecture/simulation-loop.md) | What happens in a tick |
 | [Observers and results](docs/architecture/observers-and-results.md) | How a run reports |
 | [Logging and diagnostics](docs/architecture/logging-and-diagnostics.md) | Levels, sinks, traced exceptions |
 | [Build and CI](docs/architecture/build-and-ci.md) | Presets, the pipeline |
 | [Performance](docs/architecture/performance.md) | The time budget, the benchmarks |
 | [Known limits](docs/architecture/limitations.md) | What the model gets wrong |
-| [Planned](docs/architecture/future/) | Agents, real time, save and resume, dynamic assets, sweeps |
+| [Planned](docs/architecture/future/) | The human seat, real time, save and resume, dynamic assets, sweeps |
 
 ## Getting started
 
@@ -94,7 +101,7 @@ On Windows with an MSYS2 UCRT64 toolchain, use the `*-mingw` presets instead.
 ### One module
 
 Every module is the target `mms_<name>` with the alias `MMS::<name>`: `core`, `math`,
-`mm`, `simulation`, `logging`, `diagnostics`.
+`mm`, `agents`, `simulation`, `logging`, `diagnostics`.
 
 ```bash
 cmake --build --preset dev --target mms_core

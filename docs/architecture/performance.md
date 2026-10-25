@@ -59,9 +59,9 @@ PATH="$PWD/build/bench-mingw/out/bin:$PATH" build/bench-mingw/out/bench/simulati
 
 ## What the numbers do not cover
 
-- The benchmark config is modest. Adverse flow is one arrival per asset per tick, books
-  stay shallow, the strategy uses constant volatility estimators. A busier market costs
-  more.
+- The benchmark config is modest. One informed trader and one market maker, an arrival
+  rate of one per tick, books that stay shallow, constant volatility estimators. A market
+  with many bots costs more, and every agent adds a view to build each time it acts.
 - Observers in the engine benchmark only count. An observer that does real work costs
   what that work costs.
 - There is no application yet, so there is no thread handing snapshots to a screen, and

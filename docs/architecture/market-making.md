@@ -1,8 +1,8 @@
 # Market making
 
 The `mm` module holds everything a market maker decides and keeps track of. It does
-not move time and it does not touch an exchange. `simulation` feeds it market data,
-asks it for quotes, and tells it about fills.
+not move time and it does not touch an exchange. The market maker agent in
+[agents](agents.md) feeds it the true prices, asks it for quotes, and sends what changed.
 
 ```mermaid
 flowchart LR
@@ -87,7 +87,25 @@ its size changed. A threshold of 0 replaces every quote every tick.
 
 `plan_requote` is pure. It takes the desired quotes, the live ones and the tick sizes,
 and returns what to cancel and what to submit. It knows nothing about engines or clocks.
-`simulation` keeps the list of live quotes and carries the plan out.
+The market maker agent reads its live quotes from its own open orders and sends the plan as
+actions.
+
+## As an agent
+
+`MarketMakerAgent` wraps a strategy and a requote threshold. Each time it acts it reads the
+true price of every asset from the `signal` of its view, feeds it to the strategy, and sends
+the plan. It keeps no record of its own orders. What it has in the market is read from the
+open orders of its view, with one rule: a side that has an order on its way, or a cancel on
+its way, is left alone until that has landed. A side with more than one resting order, which
+should not happen, is cleaned up first, keeping the oldest.
+
+It is the one agent that is handed the true price. It quotes around it, and nothing else in
+the market could give it a price while it is the only one quoting. Its volatility is still
+estimated, never read.
+
+Two limits today. The state of the estimators is not part of what `save()` returns, so a run
+resumed from a saved agent restarts them. And the first time it acts there is no earlier
+price, so the estimators see their first sample without a return.
 
 ## Positions and P&L
 
@@ -104,9 +122,9 @@ two ways that always agree:
 
 That gives `realized + unrealized == spread_capture + inventory`, which is gross profit.
 Fees are a separate bucket on top. Today only the maker fee exists, in basis points of
-notional, and a negative value is a rebate. The ledger is fed by `simulation`: `on_fill`
+notional, and a negative value is a rebate. The ledger is fed by the account of the agent: `on_fill`
 and `on_mark`.
 
-There is one ledger for the whole portfolio. With a single market maker that is right.
-With several traders it is not, and
-[agents and the human seat](future/agents-and-human-seat.md) says what has to change.
+Every agent has its own account, and the account has one ledger: the market maker, a bot and
+later a person are all measured the same way. The account adds cash, reserves for pending
+orders and collateral for shorts on top of it. See [agents](agents.md).

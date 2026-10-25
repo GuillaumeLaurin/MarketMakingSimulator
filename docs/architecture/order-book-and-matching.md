@@ -20,8 +20,8 @@ map and time priority from the deque. An `unordered_map` from order id to
 (side, price) makes cancelling cheap.
 
 Its interface is narrow on purpose: add, cancel, fill, look at the best entry, ask
-for depth, and count what a given price rule could match. It does not let you
-iterate over its insides. That leaves the representation free to change when a
+for depth, list the best few levels with their totals, and count what a given price rule
+could match. It does not let you iterate over its insides. That leaves the representation free to change when a
 benchmark says so, and nothing outside has to move. The current one is a correct
 reference version, not a tuned one. In the benchmark the cost of resting and cancelling
 an order barely moves between a book of 10 levels and one of 1000, so there is no
@@ -61,6 +61,18 @@ The matching loop itself, `match_against_book`, is a free function that mutates 
 book and returns the trades without telling anyone. Reporting is the engine's job.
 That is what lets the loop be tested with nothing but a book.
 
+## Self-trade prevention
+
+The engine can be told which resting orders belong to whoever is submitting right now, with
+`set_self_trade_prevention`. It is off by default. When an incoming order would trade with
+one of those orders, the engine cancels the resting one instead, reports it through
+`on_order_cancelled`, and carries on matching what is behind it. The oldest order is the one
+that goes. Such cancellations are reported before the trades of the same submission, and
+the owner's own orders do not count towards a fill-or-kill.
+
+The engine still does not know what an owner is. It asks a function, called only from inside
+`submit`, and the caller answers. That is how `simulation` keeps agents out of `core`.
+
 ## Observers
 
 `MatchingEngineObserver` has three virtual methods, all empty by default:
@@ -88,8 +100,9 @@ broken by insertion.
 
 ## No owner on an order
 
-An order carries a side, a price, a quantity and a time-in-force. It has no owner. The
-engine assigns ids, and the simulation works out whose order is whose, today by asking
-"is this id my one resting quote?". That is enough for one market maker and adverse
-flow. It is not enough for several agents, and
-[agents and the human seat](future/agents-and-human-seat.md) is about exactly that.
+An order carries a side, a price, a quantity and a time-in-force. It has no owner, and
+ids are per engine, so two assets both have an order 1. The engine assigns ids, and
+`simulation` keeps a registry from (asset, order id) to the agent that placed it. See
+[agents](agents.md). Keeping the owner out of `core` is deliberate: the exchange does not
+know who it is dealing with, and that is what lets the same engine serve a market maker, a
+bot and a person.

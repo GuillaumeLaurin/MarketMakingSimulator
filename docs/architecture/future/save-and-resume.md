@@ -37,8 +37,11 @@ flowchart LR
 
 Several earlier choices were made with this in mind.
 
-- **Streams are keyed by symbol.** A saved simulation reopens with the same random
-  streams for every asset, whatever order they load in. See [randomness](../randomness.md).
+- **Streams are keyed by symbol and by agent name.** A saved simulation reopens with the same
+  random streams for every asset and every agent, whatever order they load in. See
+  [randomness](../randomness.md).
+- **Agents own no randomness and can write their state.** The engine comes in as an argument,
+  and `save()` and `load()` carry the rest as bytes only the agent understands.
 - **Engines are small, copyable values.** A counter-based engine is a key and a counter.
   Saving one means saving two numbers, and position `n` is reached in O(1).
 - **Commands are stamped with a tick** and a replay is a pure function of the journal.
@@ -51,9 +54,10 @@ For a snapshot to be exact, everything that influences the next tick:
 - the price process: prices and every engine's position,
 - each asset's order book, with order ids, and the next id,
 - the event queue, with due times and its insertion counter,
-- the ledger, with cash and positions,
-- the strategy: its estimators' state and the horizon,
-- the loop: live quotes, requests in flight, the previous prices, the clock.
+- each agent: its own bytes (`save()`), its account with cash and positions, its tickets and
+  its list of orders, its decision clock and the factor moves it has gathered,
+- the loop: the registry of who owns each resting order, the history of snapshots and trades
+  that agents are shown, the clock.
 
 The loop's in-flight bookkeeping is the easy one to forget. A snapshot that leaves it out
 resumes in a state that never existed.
