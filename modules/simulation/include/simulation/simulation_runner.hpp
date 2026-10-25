@@ -63,7 +63,7 @@ public:
     /// Read-only view of the run's state (prices, books, ledger) between ticks.
     [[nodiscard]] const World& world() const noexcept { return world_; }
 
-    /// Ticks run so far, time of the last tick, and the live quotes.
+    /// Ticks run so far, and the time of the last tick.
     [[nodiscard]] const TickLoop& loop() const noexcept { return loop_; }
 
 private:

@@ -83,10 +83,12 @@ FactorModel::FactorModel(Vector initial_prices,
     initial_factor_engines_ = factor_engines;
     factor_engines_ = std::move(factor_engines);
     prices_ = initial_prices_;
+    factors_ = Vector::Zero(beta_.cols());
 }
 
 void FactorModel::do_advance(double dt) {
     const Vector f = correlated_normal_increment(factor_chol_, factor_engines_, dt);
+    factors_ = f;
 
     const auto n = static_cast<Index>(engines_.size());
     Vector idio_z(n);
@@ -106,6 +108,7 @@ void FactorModel::reset() {
     prices_ = initial_prices_;
     engines_ = initial_engines_;
     factor_engines_ = initial_factor_engines_;
+    factors_ = Vector::Zero(beta_.cols());
 }
 
 } // namespace mms::math::process

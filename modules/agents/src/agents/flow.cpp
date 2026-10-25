@@ -1,25 +1,21 @@
 /// \file
-/// Implementation of adverse flow (<simulation/adverse_flow.hpp>).
+/// Implementation of the random flow draws (<agents/flow.hpp>).
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <variant>
-#include <vector>
+
+#include <agents/flow.hpp>
 
 #include <math/dist/discrete.hpp>
 #include <math/dist/exponential.hpp>
 #include <math/dist/uniform.hpp>
-#include <simulation/adverse_flow.hpp>
 
-#include "mm/types.hpp"
-#include "simulation/size_spec.hpp"
-
-namespace mms::simulation {
+namespace mms::agents {
 
 namespace {
 
@@ -27,31 +23,33 @@ namespace {
 /// drawn as several independent chunks, whose sum is Poisson again.
 constexpr double max_poisson_mean = 30.0;
 
-/// A mean this large per tick is a configuration mistake, and would make the
-/// chunked draw (and the order vector) enormous rather than fail.
-constexpr double max_arrivals_per_tick = 1.0e6;
+/// A mean this large per draw is a configuration mistake, and would make the
+/// chunked draw (and any order vector) enormous rather than fail.
+constexpr double max_arrivals_per_draw = 1.0e6;
 
 /// Largest exponential size handed to the integer conversion: far above any
 /// realistic trade, far below the point where the conversion overflows.
 constexpr double max_exponential_size = 9.0e15;
 
 [[noreturn]] void reject(const char* message) {
-    throw std::invalid_argument(std::string("adverse_flow: ") + message);
+    throw std::invalid_argument(std::string("flow: ") + message);
 }
 
-void require_correlation(double correlation) {
+} // namespace
+
+void validate_correlation(double correlation) {
     if (!std::isfinite(correlation) || correlation < 0.0 || correlation > 1.0) {
         reject("direction correlation must be finite and in [0, 1]");
     }
 }
 
-void require_last_move(double last_move) {
+void validate_last_move(double last_move) {
     if (!std::isfinite(last_move)) {
         reject("last price move must be finite");
     }
 }
 
-void require_size_spec(const DistributionSpec& spec) {
+void validate_size_spec(const DistributionSpec& spec) {
     std::visit(
         [](const auto& concrete) {
             using Spec = std::decay_t<decltype(concrete)>;
@@ -69,8 +67,6 @@ void require_size_spec(const DistributionSpec& spec) {
         spec);
 }
 
-} // namespace
-
 std::int64_t draw_arrival_count(double lambda, double dt, math::rng::RngEngine& engine) {
     if (!std::isfinite(lambda) || lambda < 0.0) {
         reject("lambda must be finite and >= 0");
@@ -80,8 +76,8 @@ std::int64_t draw_arrival_count(double lambda, double dt, math::rng::RngEngine& 
         reject("dt must be finite and > 0");
     }
     const double mean = lambda * dt;
-    if (!(mean <= max_arrivals_per_tick)) {
-        reject("lambda * dt (arrivals per tick) must be at most 1e6");
+    if (!(mean <= max_arrivals_per_draw)) {
+        reject("lambda * dt (arrivals per draw) must be at most 1e6");
     }
 
     std::int64_t count = 0;
@@ -95,8 +91,8 @@ std::int64_t draw_arrival_count(double lambda, double dt, math::rng::RngEngine& 
 }
 
 mm::Side draw_direction(double correlation, double last_move, math::rng::RngEngine& engine) {
-    require_correlation(correlation);
-    require_last_move(last_move);
+    validate_correlation(correlation);
+    validate_last_move(last_move);
 
     // Both coins are always drawn, so the stream never depends on the outcome.
     const bool follows_the_move = math::dist::bernoulli(engine, correlation);
@@ -109,7 +105,7 @@ mm::Side draw_direction(double correlation, double last_move, math::rng::RngEngi
 }
 
 mm::Quantity draw_size(const DistributionSpec& spec, math::rng::RngEngine& engine) {
-    require_size_spec(spec);
+    validate_size_spec(spec);
 
     return std::visit(
         [&engine](const auto& concrete) -> mm::Quantity {
@@ -127,28 +123,4 @@ mm::Quantity draw_size(const DistributionSpec& spec, math::rng::RngEngine& engin
         spec);
 }
 
-std::vector<mm::MarketOrder> generate_adverse_flow(const AssetSpec& asset,
-                                                   double last_move,
-                                                   double dt,
-                                                   math::rng::RngEngine& engine) {
-    // Everything is validated before the first draw, so a rejected call
-    // leaves the engine exactly where it was.
-    require_correlation(asset.adverse_flow_direction_correlation);
-    require_last_move(last_move);
-    require_size_spec(asset.adverse_flow_size);
-
-    const std::int64_t count = draw_arrival_count(asset.adverse_flow_lambda, dt, engine);
-
-    std::vector<mm::MarketOrder> orders;
-    orders.reserve(static_cast<std::size_t>(count));
-    for (std::int64_t i = 0; i < count; ++i) {
-        const mm::Side side =
-            draw_direction(asset.adverse_flow_direction_correlation, last_move, engine);
-        const mm::Quantity quantity = draw_size(asset.adverse_flow_size, engine);
-        orders.push_back(mm::MarketOrder{
-            .side = side, .quantity = quantity, .time_in_force = mm::MarketTimeInForce::IOC});
-    }
-    return orders;
-}
-
-} // namespace mms::simulation
+} // namespace mms::agents

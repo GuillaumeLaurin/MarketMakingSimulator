@@ -15,7 +15,6 @@
 #include <mm/types.hpp>
 
 #include <math/types.hpp>
-#include <simulation/size_spec.hpp>
 
 namespace mms::simulation {
 
@@ -30,7 +29,7 @@ struct FactorModelAssetData {
 
 /// One asset's own data. Plain aggregate, no invariant enforced here: every
 /// field is validated wherever it is actually used (World building the
-/// PriceProcess and the CovarianceMatrix, PnlLedger, adverse_flow).
+/// PriceProcess and the CovarianceMatrix, the accounts).
 struct AssetSpec {
     /// What this asset is called. It is the asset's identity: its random
     /// streams are derived from it (math::rng::asset_key_of), so renaming an
@@ -40,6 +39,10 @@ struct AssetSpec {
 
     /// The true price's starting point, also PnlLedger's initial mid.
     mm::Price initial_mid;
+
+    /// The smallest price step of this asset's book: an exchange property, the same for
+    /// every agent (AssetView::tick_size). Finite and > 0; validate_agent_setup checks.
+    mm::Price tick_size = 0.01;
 
     /// Maker fee in basis points of notional, forwarded to LedgerAsset.
     double maker_fee_bps = 0.0;
@@ -58,21 +61,7 @@ struct AssetSpec {
 
     /// Present only when the simulation uses FactorModelSpec; ignored
     /// (and may be left empty) under RandomWalkSpec.
-    std::optional<FactorModelAssetData> factor_model;
-
-    /// Poisson arrival rate of adverse-flow occurrences on this asset, per
-    /// unit of simulation time.
-    double adverse_flow_lambda = 0.0;
-
-    /// How adverse the direction of each occurrence is, in [0, 1]: with this
-    /// probability an occurrence trades in the direction of the last price
-    /// move (adverse selection), otherwise its direction is a fair coin.
-    /// 0 is pure noise, 1 always follows the move. Validated where it is
-    /// used (adverse_flow.cpp), not here.
-    double adverse_flow_direction_correlation = 0.0;
-
-    /// The size of one adverse-flow occurrence on this asset.
-    DistributionSpec adverse_flow_size;
+    std::optional<FactorModelAssetData> factor_model = std::nullopt;
 };
 
 } // namespace mms::simulation

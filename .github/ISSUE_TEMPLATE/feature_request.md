@@ -21,7 +21,7 @@ Optional.
 
 ## Scope
 
-Which area does this touch: `core`, `math`, `mms`, `simulation`, `app`, `cmake`,
+Which area does this touch: `core`, `math`, `mm`, `agents`, `simulation`, `app`, `cmake`,
 `ci`, `docs`.
 
 ## Additional context

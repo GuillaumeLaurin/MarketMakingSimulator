@@ -20,8 +20,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   portfolio), risk limits, the requote plan, tick-grid arithmetic, positions and a P&L
   ledger that explains profit two ways.
 - `MMS::simulation`: the engine. A world built from a config, a tick loop with a fixed
-  order of events, adverse order flow, latency on every message, an observer interface,
-  a results observer, and a runner (`SimulationRunner`, `run_simulation`).
+  order of events, latency on every message, an observer interface, a results observer, and
+  a runner (`SimulationRunner`, `run_simulation`).
+- `MMS::agents`: what trades. The `Agent` interface, `AgentView` (the best levels of the
+  books, the trades since the agent last looked, the true price for the agents meant to have
+  it, the factor moves for the factor traders, its own account and orders) and `Action`; the
+  market maker as an agent; and the bots: informed flow, a noise trader, a trend follower, a
+  mean reverter and a factor trader. One function, `make_agent`, builds any of them from plain
+  data.
+- Accounts and the rules of the exchange, in `MMS::simulation`: cash, reserves for pending
+  orders, collateral for shorts, position limits, and six reasons for refusing an action, the
+  same for every agent. Each agent has its own speed (`decision_period`), delay for its orders
+  (`order_delay`) and delay for what it sees (`info_delay`).
+- `MMS::core`: self-trade prevention in the matching engine (the older of the submitter's own
+  orders is cancelled instead of trading) and `OrderBook::levels`, the best levels of a side
+  with their totals.
+- `MMS::math`: the price processes expose the moves of their common factors
+  (`factor_increments`), and the random streams `Agent` and `AgentLatency`.
+- Per-agent results: a P&L ledger, statistics, drawdown, the trades each agent started and
+  the ones that hit it, and its refusals by reason.
 - `MMS::logging` and `MMS::diagnostics`: leveled logging with pluggable sinks, and
   exceptions that capture a stack trace where they are thrown. Neither is used by the
   engine yet.
@@ -40,6 +57,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **Breaking:** the market maker is an agent. `SimulationConfig` loses `strategy`,
+  `latency` and `requote_threshold_ticks` and gains `agents`, `account_rules` and
+  `book_depth`. The strategy and the requote threshold now live in `MarketMakerSpec`, and
+  the delay of its orders in the agent's timing. `AssetSpec` gains `tick_size`.
+- **Breaking:** adverse flow is gone as a separate mechanism. `AssetSpec` loses its
+  `adverse_flow_*` fields, and `generate_adverse_flow`, `AdverseOrder` and `LatencyConfig`
+  are removed. The same behaviour is an agent, `InformedFlowSpec`, with one set of
+  parameters for every asset. Listed before the market maker, it hits the previous tick's
+  quotes as before.
+- **Breaking:** the observer. `on_trade` takes the two parties and the side that started the
+  trade, `on_reject` is new, `on_quote` is removed and `TickLoop::live_quotes()` becomes
+  `quotes_of(agent)`. `Results` holds one entry per agent, and `ResultsObserver` takes the
+  agents to watch. `World` loses `pnl_ledger()` and `strategy()` for `agent(i)`.
+- A market maker that crosses its own stale quote no longer trades with itself. The older
+  order is cancelled and the new one rests.
 - **Breaking:** the default price dynamics is now geometric. A config that does not set
   `dynamics` gets relative `mu` and `price_volatility` where it used to get price units.
   Set `dynamics = Dynamics::Arithmetic` to keep the old behaviour. The `math` process

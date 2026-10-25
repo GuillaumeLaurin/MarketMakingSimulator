@@ -1,7 +1,6 @@
 /// \file
 /// Tests for simulation/asset_spec.hpp: field defaults and exactness,
-/// FactorModelAssetData only present when built, and that AssetSpec reuses
-/// size_spec's DistributionSpec rather than redefining its own.
+/// FactorModelAssetData only present when built.
 
 #include <optional>
 #include <string>
@@ -13,7 +12,6 @@
 
 #include <math/types.hpp>
 #include <simulation/asset_spec.hpp>
-#include <simulation/size_spec.hpp>
 
 namespace sim = mms::simulation;
 namespace mm = mms::mm;
@@ -23,14 +21,12 @@ TEST_CASE("AssetSpec's optional fields default to zero or empty", "[simulation][
     const sim::AssetSpec spec{.symbol = "TEST",
                               .initial_mid = 100.0,
                               .price_volatility = 0.2,
-                              .factor_model = std::nullopt,
-                              .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}};
+                              .factor_model = std::nullopt};
 
     CHECK(spec.maker_fee_bps == 0.0);
     CHECK(spec.mu == 0.0);
     CHECK_FALSE(spec.factor_model.has_value());
-    CHECK(spec.adverse_flow_lambda == 0.0);
-    CHECK(spec.adverse_flow_direction_correlation == 0.0); // pure noise unless asked otherwise
+    CHECK(spec.tick_size == 0.01);
 }
 
 TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][asset_spec]") {
@@ -40,13 +36,11 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
     const sim::AssetSpec spec{
         .symbol = "HOLD",
         .initial_mid = 50.0,
+        .tick_size = 0.05,
         .maker_fee_bps = 1.5,
         .price_volatility = 0.3,
         .mu = 0.01,
-        .factor_model = sim::FactorModelAssetData{.beta = beta, .idiosyncratic_volatility = 0.1},
-        .adverse_flow_lambda = 2.0,
-        .adverse_flow_direction_correlation = 0.75,
-        .adverse_flow_size = sim::UniformIntSpec{.min = 1, .max = 20}};
+        .factor_model = sim::FactorModelAssetData{.beta = beta, .idiosyncratic_volatility = 0.1}};
 
     CHECK(spec.symbol == "HOLD");
     CHECK(spec.initial_mid == 50.0);
@@ -57,10 +51,7 @@ TEST_CASE("AssetSpec holds every field exactly when all are set", "[simulation][
     CHECK(spec.factor_model->beta(0) == 0.5);
     CHECK(spec.factor_model->beta(1) == -0.3);
     CHECK(spec.factor_model->idiosyncratic_volatility == 0.1);
-    CHECK(spec.adverse_flow_lambda == 2.0);
-    CHECK(spec.adverse_flow_direction_correlation == 0.75);
-    REQUIRE(std::holds_alternative<sim::UniformIntSpec>(spec.adverse_flow_size));
-    CHECK(std::get<sim::UniformIntSpec>(spec.adverse_flow_size).max == 20);
+    CHECK(spec.tick_size == 0.05);
 }
 
 TEST_CASE("A RandomWalk-style AssetSpec simply leaves factor_model empty",
@@ -68,8 +59,7 @@ TEST_CASE("A RandomWalk-style AssetSpec simply leaves factor_model empty",
     const sim::AssetSpec spec{.symbol = "TEST",
                               .initial_mid = 100.0,
                               .price_volatility = 0.2,
-                              .factor_model = std::nullopt,
-                              .adverse_flow_size = sim::ExponentialSpec{.mean = 3.0}};
+                              .factor_model = std::nullopt};
 
     CHECK_FALSE(spec.factor_model.has_value());
 }
@@ -80,15 +70,7 @@ TEST_CASE("initial_mid is mm::Price and price-related rates are plain double",
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::initial_mid), mm::Price>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::price_volatility), double>);
     STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::mu), double>);
-    STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::adverse_flow_lambda), double>);
-    STATIC_REQUIRE(
-        std::is_same_v<decltype(sim::AssetSpec::adverse_flow_direction_correlation), double>);
-}
-
-TEST_CASE("AssetSpec::adverse_flow_size is exactly size_spec's DistributionSpec",
-          "[simulation][asset_spec]") {
-    STATIC_REQUIRE(
-        std::is_same_v<decltype(sim::AssetSpec::adverse_flow_size), sim::DistributionSpec>);
+    STATIC_REQUIRE(std::is_same_v<decltype(sim::AssetSpec::tick_size), mm::Price>);
 }
 
 TEST_CASE("FactorModelAssetData holds its beta vector and idiosyncratic volatility exactly",

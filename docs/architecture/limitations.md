@@ -16,15 +16,18 @@ and some is work that is not done yet. Each item says which.
   does not have the problem. (Known cost of the dense walk.)
 - **Factors are independent.** The factor model does not support correlated factors.
   (Choice: nothing needed them.)
-- **Counterparties are thin.** The only thing that trades against the market maker is
-  adverse flow: market orders that follow the last price move with a configurable
-  probability. There are no other limit orders in the book than the market maker's own.
-  (Gap, and the main reason to build [agents](future/agents-and-human-seat.md).)
-- **One quote per side per asset.** The strategy keeps one resting order on each side, not
-  a ladder. (Choice for now.)
+- **The bots are simple.** A noise trader, a trend follower, a mean reverter, a factor trader
+  and informed flow. None of them learns, none of them holds a view of fair value, and none
+  of them reacts to the others except through the book. Real participants do all three.
+  (Gap. The [agents](agents.md) are the place to add more.)
+- **One quote per side per asset for the market maker.** The strategy keeps one resting order
+  on each side, not a ladder. (Choice for now.)
 - **Only the maker fee exists.** No taker fee, no borrow cost, no financing. (Gap.)
-- **No liquidation and no margin.** A position can grow until a risk limit stops the
-  strategy from quoting that side, but nothing forces it closed. (Gap.)
+- **No liquidation.** An account can go below zero buying power, which blocks every order
+  that adds risk, but nothing forces the position closed. Margin is a collateral rate and
+  nothing more. (Gap.)
+- **Trades have no side effects on prices.** The true price does not react to what the
+  agents do, however large they get. A big buyer moves the book, not the process. (Choice.)
 - **Timing is only as fine as `dt`.** An event due between two ticks runs at the next
   tick, at that tick's mid. (Cost of a tick-based loop.)
 - **Order types are plain.** Limit and market, with GTC, IOC and FOK. No iceberg, no stop.
@@ -42,11 +45,16 @@ and some is work that is not done yet. Each item says which.
   files, no GUI.
 - **No serialisation.** A run cannot be saved or resumed. See
   [save and resume](future/save-and-resume.md).
-- **No agents, no human seat, no assets added during a run.** All of it is planned. See
-  the `future/` pages.
+- **No human seat, no assets added during a run.** Both are planned. See the `future/` pages.
 - **`logging` and `diagnostics` are unused by the engine.** Adopting `Traced` exceptions
   is open work. See [logging and diagnostics](logging-and-diagnostics.md).
-- **Only one strategy.** Avellaneda-Stoikov. The interface allows more.
+- **Only one market-making strategy.** Avellaneda-Stoikov. The interface allows more.
+- **Agents cannot be saved yet in full.** An agent can write its own state as bytes. The
+  market maker does not include its volatility estimators, and nothing writes the rest of the
+  world. See [save and resume](future/save-and-resume.md).
+- **Agent kinds are a closed list.** Adding one means changing the project. There is no way
+  yet to plug one in from outside. See [agents](agents.md).
+- **Informed flow has one set of parameters for every asset.** Not one per asset.
 
 ## Engineering
 

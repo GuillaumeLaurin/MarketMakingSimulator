@@ -25,7 +25,7 @@ std::int64_t validated_tick_count(const SimulationConfig& config) {
 
 SimulationRunner::SimulationRunner(const SimulationConfig& config)
     : tick_count_(validated_tick_count(config)), world_(config), loop_(world_, config),
-      observer_(world_.pnl_ledger()) {
+      observer_(observed_agents(world_)) {
     // Registered here, before any caller can add its own: the built-in
     // observer always sees a tick first.
     loop_.add_observer(observer_);

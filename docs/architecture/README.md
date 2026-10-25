@@ -12,9 +12,13 @@ are kept apart in `future/` so nobody mistakes them for the current code.
 ```mermaid
 flowchart LR
     app["application (not written yet)"] --> sim[simulation]
+    sim --> agents
     sim --> mm
     sim --> core
     sim --> math
+    agents --> mm
+    agents --> core
+    agents --> math
     mm --> core
     mm --> math
     logging
@@ -33,8 +37,9 @@ which data moves through a tick.
 | [Price processes](price-processes.md) | Random walk and factor model, arithmetic and geometric dynamics, correlation |
 | [Order book and matching](order-book-and-matching.md) | The book, the matching engine, the latency queue |
 | [Market making](market-making.md) | Avellaneda-Stoikov quoting, risk limits, requoting, the P&L ledger |
-| [The simulation loop](simulation-loop.md) | What `World` holds, the order of events inside a tick, adverse flow, latency |
-| [Observers and results](observers-and-results.md) | How a run reports what happened and how the results are built |
+| [Agents](agents.md) | What an agent sees and can ask for, the account rules, who owns an order, the bots, timing |
+| [The simulation loop](simulation-loop.md) | What `World` holds, the order of events inside a tick, executing a message, latency |
+| [Observers and results](observers-and-results.md) | How a run reports what happened, and the results of each agent |
 | [Logging and diagnostics](logging-and-diagnostics.md) | Leveled logging and exceptions that carry their own stack trace |
 | [Build and CI](build-and-ci.md) | Presets, vcpkg, the pipeline and why it is shaped the way it is |
 | [Performance](performance.md) | The time budget and how to measure against it |
@@ -44,7 +49,7 @@ which data moves through a tick.
 
 | Page | What it covers |
 |---|---|
-| [Agents and the human seat](future/agents-and-human-seat.md) | Bots, a person trading or making the market, who owns an order |
+| [Agents and the human seat](future/agents-and-human-seat.md) | A person trading or making the market, and the bots still missing |
 | [Real time and threads](future/real-time-and-threads.md) | One thread owns the world, speed 1x, 10x, 100x |
 | [Save and resume](future/save-and-resume.md) | Snapshots and an event journal |
 | [Dynamic assets](future/dynamic-assets.md) | Listing assets while a run is going |

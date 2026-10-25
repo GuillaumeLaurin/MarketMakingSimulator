@@ -2,7 +2,7 @@
 
 What a market maker decides and keeps track of: the quoting strategy, the risk limits, the
 requote plan, positions and the P&L ledger. It does not move time and it does not touch an
-exchange. `simulation` calls it.
+exchange. The market maker agent in `agents` calls it.
 
 Depends on `core` and `math`.
 

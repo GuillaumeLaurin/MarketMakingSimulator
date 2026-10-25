@@ -22,6 +22,7 @@
 #include <map>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 #include <core/concepts.hpp>
 #include <core/order.hpp>
@@ -29,6 +30,12 @@
 #include <core/side.hpp>
 
 namespace mms::core {
+
+/// The total resting quantity at one price: one line of the book as a market data feed shows it.
+template<OrderedArithmetic Price, OrderedArithmetic Quantity> struct LevelDepth {
+    Price price;
+    Quantity quantity;
+};
 
 /// A resting entry, returned by best() so callers get both the id (to
 /// build a Trade) and the order data in one call.
@@ -94,35 +101,49 @@ public:
     /// Sums the quantity resting at prices satisfying `accepts`, walking from
     /// the lowest price outward, stopping at the first price that fails (the
     /// map is price-ascending, so once one fails, every higher price does too).
-    /// Non-mutating - used to check Fill-Or-Kill feasibility before committing
-    /// any fills.
-    template<class Predicate>
-    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts) const {
+    /// Entries for which `excluded(id)` is true are not counted. Non-mutating -
+    /// used to check Fill-Or-Kill feasibility before committing any fills.
+    template<class Predicate, class Excluded>
+    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts, Excluded excluded) const {
         Quantity total{};
         for (const auto& [price, level] : levels_) {
             if (!accepts(price)) {
                 break;
             }
             for (const auto& entry : level) {
-                total = total + entry.order.quantity;
+                if (!excluded(entry.id)) {
+                    total = total + entry.order.quantity;
+                }
             }
         }
         return total;
     }
 
-    /// Same, walking from the highest price outward instead
     template<class Predicate>
-    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts) const {
+    [[nodiscard]] Quantity total_matchable_ascending(Predicate accepts) const {
+        return total_matchable_ascending(accepts, [](OrderId) { return false; });
+    }
+
+    /// Same, walking from the highest price outward instead
+    template<class Predicate, class Excluded>
+    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts, Excluded excluded) const {
         Quantity total{};
         for (auto it = levels_.rbegin(); it != levels_.rend(); ++it) {
             if (!accepts(it->first)) {
                 break;
             }
             for (const auto& entry : it->second) {
-                total = total + entry.order.quantity;
+                if (!excluded(entry.id)) {
+                    total = total + entry.order.quantity;
+                }
             }
         }
         return total;
+    }
+
+    template<class Predicate>
+    [[nodiscard]] Quantity total_matchable_descending(Predicate accepts) const {
+        return total_matchable_descending(accepts, [](OrderId) { return false; });
     }
 
     [[nodiscard]] bool empty() const noexcept { return levels_.empty(); }
@@ -157,6 +178,31 @@ public:
             total = total + entry.order.quantity;
         }
         return total;
+    }
+
+    /// The `count` best levels, each with the total quantity resting at its price: from the
+    /// highest price down when `from_highest`, from the lowest up otherwise. Fewer when the
+    /// side has fewer.
+    [[nodiscard]] std::vector<LevelDepth<Price, Quantity>> best_levels(bool from_highest,
+                                                                       std::size_t count) const {
+        std::vector<LevelDepth<Price, Quantity>> result;
+        const auto take = [&](const auto& price, const Level& level) {
+            Quantity total{};
+            for (const auto& entry : level) {
+                total = total + entry.order.quantity;
+            }
+            result.push_back(LevelDepth<Price, Quantity>{.price = price, .quantity = total});
+        };
+        if (from_highest) {
+            for (auto it = levels_.rbegin(); it != levels_.rend() && result.size() < count; ++it) {
+                take(it->first, it->second);
+            }
+        } else {
+            for (auto it = levels_.begin(); it != levels_.end() && result.size() < count; ++it) {
+                take(it->first, it->second);
+            }
+        }
+        return result;
     }
 
     [[nodiscard]] std::size_t size() const noexcept { return size_; }
@@ -197,11 +243,18 @@ public:
 
     /// Total resting quantity on `side` matchable under `accepts` (a
     /// predicate on price), without mutating anything - used by MatchingEngine
-    /// to check Fill-Or-Kill feasibility up front.
+    /// to check Fill-Or-Kill feasibility up front. `excluded(id)` leaves an
+    /// order out of the count: the orders that self-trade prevention would
+    /// cancel instead of trading with.
+    template<class Predicate, class Excluded>
+    [[nodiscard]] Quantity total_matchable(Side side, Predicate accepts, Excluded excluded) const {
+        return side == Side::Buy ? levels_for(side).total_matchable_descending(accepts, excluded)
+                                 : levels_for(side).total_matchable_ascending(accepts, excluded);
+    }
+
     template<class Predicate>
     [[nodiscard]] Quantity total_matchable(Side side, Predicate accepts) const {
-        return side == Side::Buy ? levels_for(side).total_matchable_descending(accepts)
-                                 : levels_for(side).total_matchable_ascending(accepts);
+        return total_matchable(side, accepts, [](OrderId) { return false; });
     }
 
     [[nodiscard]] bool empty(Side side) const noexcept { return levels_for(side).empty(); }
@@ -220,6 +273,13 @@ public:
     }
 
     [[nodiscard]] std::size_t size(Side side) const noexcept { return levels_for(side).size(); }
+
+    /// The `count` best price levels of `side`, best first (the highest bids, the lowest asks),
+    /// each with the total quantity resting at its price. Fewer when the side has fewer.
+    [[nodiscard]] std::vector<LevelDepth<Price, Quantity>> levels(Side side,
+                                                                  std::size_t count) const {
+        return levels_for(side).best_levels(side == Side::Buy, count);
+    }
 
 private:
     struct Location {

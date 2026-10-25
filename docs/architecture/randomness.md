@@ -24,23 +24,31 @@ ever becomes a portability problem. Nothing uses it today.
 flowchart TB
     seed[master seed] --> hub[RngHub]
     hub -->|"Price, AAPL"| a[price engine for AAPL]
-    hub -->|"AdverseFlow, AAPL"| b[adverse flow engine for AAPL]
-    hub -->|"Latency, AAPL"| c[latency engine for AAPL]
-    hub -->|"PriceFactor, 0"| d[engine for factor 0]
+    hub -->|"PriceFactor, 0"| b[engine for factor 0]
+    hub -->|"Agent, trend-1"| c[decision engine for the agent trend-1]
+    hub -->|"AgentLatency, trend-1"| d[latency engine for the agent trend-1]
 ```
 
 `RngHub::engine_for(StreamKey)` is a pure function of the master seed and the key.
-A key is a subsystem (`Price`, `AdverseFlow`, `Latency`, `PriceFactor`) plus an
-asset key. `World` builds the hub once and hands each engine to the part of the
-code that owns it. Engines are held by value, so copying one is a snapshot of
+A key is a subsystem (`Price`, `PriceFactor`, `Agent`, `AgentLatency`) plus a
+key: an asset's, a factor's or an agent's. `World` builds the hub once and hands each
+engine to the part of the code that owns it. Engines are held by value, so copying one is a snapshot of
 where it is.
 
-### One stream per subsystem and per asset
+### One stream per subsystem and per owner
 
-Adverse flow draws a variable number of values per tick: a Poisson count, then
-some per occurrence. If every asset shared one stream, one extra arrival on asset
-A would shift every draw that follows, on every asset, for the rest of the run.
-With one stream each, asset A's surprise stays on asset A.
+A trader draws a variable number of values per tick: a Poisson count, then some per
+occurrence. If every agent shared one stream, one extra arrival for agent A would shift
+every draw that follows, for every agent, for the rest of the run. With one stream each,
+A's surprise stays with A. The same goes for the price of each asset.
+
+An agent has two streams, one for its decisions and one for the delays of its messages. The
+agent never owns a generator. The world passes the engine to `act`, which is what keeps a
+resumed run exact.
+
+The draws do not depend on outcomes. An order that the gateway refuses still draws its
+delay, so a refusal never shifts a later draw. A draw that is not needed, such as a constant
+delay, consumes no word at all.
 
 ### Assets are keyed by symbol, not by position
 
@@ -53,6 +61,14 @@ the idea of adding an asset during a run came up: with positions, inserting one
 asset renumbers the others and quietly changes all their random draws. Keyed by
 symbol, adding, removing or reordering assets leaves the others' streams alone.
 `World` rejects an empty symbol and two assets with the same symbol.
+
+Agents are keyed the same way, by name, in subsystems of their own, so an agent called
+"AAPL" never shares a stream with the asset "AAPL". Adding, removing or reordering agents
+leaves the others' streams alone. A name must be unique and not empty, and
+`validate_agent_setup` rejects the rest.
+
+Two subsystems, `AdverseFlow` and `Latency`, belonged to the first loop and nothing draws
+from them any more. Their values stay taken, since the list can only grow.
 
 Factors are not assets. Factor `f` uses its index as its key, in its own subsystem
 (`PriceFactor`), so its key can never collide with an asset's.

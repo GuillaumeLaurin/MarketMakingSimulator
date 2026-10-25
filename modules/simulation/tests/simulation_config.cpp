@@ -1,10 +1,8 @@
 /// \file
 /// Tests for simulation/simulation_config.hpp: a plain aggregate assembling
 /// every piece this zone has built so far, so this mostly pins field
-/// exactness and types, plus the one field the SIM6/SIM18 correction added
-/// (`process`, a whole-simulation choice, not per asset).
+/// exactness, types and defaults.
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -12,15 +10,15 @@
 #include <variant>
 #include <vector>
 
+#include <agents/noise_trader.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <mm/strategy_config.hpp>
 
 #include <math/rng/seed.hpp>
 #include <math/types.hpp>
 #include <simulation/asset_spec.hpp>
-#include <simulation/latency_config.hpp>
 #include <simulation/price_process_spec.hpp>
 #include <simulation/simulation_config.hpp>
+#include <simulation/size_spec.hpp>
 
 namespace sim = mms::simulation;
 namespace math = mms::math;
@@ -32,23 +30,17 @@ sim::AssetSpec minimal_asset(mm::Price mid) {
     return sim::AssetSpec{.symbol = "ASSET" + std::to_string(static_cast<int>(mid)),
                           .initial_mid = mid,
                           .price_volatility = 0.2,
-                          .factor_model = std::nullopt,
-                          .adverse_flow_size = sim::ExponentialSpec{.mean = 5.0}};
+                          .factor_model = std::nullopt};
 }
 
-mm::StrategyConfig minimal_strategy(std::size_t assets) {
-    return mm::StrategyConfig{
-        .gamma = 2.0,
-        .k = math::Vector::Constant(static_cast<Eigen::Index>(assets), 1.0),
-        .correlation = math::Matrix::Identity(static_cast<Eigen::Index>(assets),
-                                              static_cast<Eigen::Index>(assets)),
-        .estimators = std::vector<mm::EstimatorSpec>(assets, mm::ConstantSpec{.sigma = 0.2}),
-        .horizon = mm::ConstantHorizon{.tau = 1.0},
-        .quote_sizes = std::vector<mm::Quantity>(assets, 10),
-        .tick_sizes = std::vector<mm::Price>(assets, 0.01),
-        .limits = {.max_abs_position = std::vector<mm::Quantity>(assets, 1000),
-                   .max_portfolio_risk = std::nullopt},
-        .min_samples = 0};
+sim::AgentSpec minimal_agent(std::string name) {
+    return sim::AgentSpec{
+        .profile = {.name = std::move(name), .initial_cash = 100.0},
+        .timing = {},
+        .behavior = mms::agents::NoiseTraderSpec{.lambda = 1.0,
+                                                 .size = sim::ExponentialSpec{.mean = 5.0},
+                                                 .market_probability = 0.5,
+                                                 .max_offset_ticks = 3}};
 }
 
 } // namespace
@@ -59,9 +51,9 @@ TEST_CASE("SimulationConfig holds every top-level field exactly",
         .assets = {minimal_asset(100.0), minimal_asset(50.0)},
         .correlation = math::Matrix::Identity(2, 2),
         .process = sim::RandomWalkSpec{},
-        .strategy = minimal_strategy(2),
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
+        .agents = {minimal_agent("a"), minimal_agent("b"), minimal_agent("c")},
+        .account_rules = {.short_collateral_rate = 0.5, .market_order_buffer = 0.1},
+        .book_depth = 8,
         .master_seed = math::rng::Seed{42},
         .dt = 0.5,
         .tick_count = 1000};
@@ -70,7 +62,11 @@ TEST_CASE("SimulationConfig holds every top-level field exactly",
     CHECK(config.assets[0].initial_mid == 100.0);
     CHECK(config.assets[1].initial_mid == 50.0);
     CHECK(config.correlation.rows() == 2);
-    CHECK(config.strategy.quote_sizes.size() == 2);
+    REQUIRE(config.agents.size() == 3);
+    CHECK(config.agents[2].profile.name == "c");
+    CHECK(config.account_rules.short_collateral_rate == 0.5);
+    CHECK(config.account_rules.market_order_buffer == 0.1);
+    CHECK(config.book_depth == 8);
     CHECK(config.master_seed == math::rng::Seed{42});
     CHECK(config.dt == 0.5);
     CHECK(config.tick_count == 1000);
@@ -79,16 +75,12 @@ TEST_CASE("SimulationConfig holds every top-level field exactly",
 TEST_CASE("SimulationConfig::process is a whole-simulation choice, holding whichever "
           "PriceProcessSpec alternative it was built from",
           "[simulation][simulation_config]") {
-    sim::SimulationConfig config{
-        .assets = {minimal_asset(100.0)},
-        .correlation = math::Matrix::Identity(1, 1),
-        .process = sim::RandomWalkSpec{},
-        .strategy = minimal_strategy(1),
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .master_seed = math::rng::Seed{1},
-        .dt = 1.0,
-        .tick_count = 10};
+    sim::SimulationConfig config{.assets = {minimal_asset(100.0)},
+                                 .correlation = math::Matrix::Identity(1, 1),
+                                 .process = sim::RandomWalkSpec{},
+                                 .master_seed = math::rng::Seed{1},
+                                 .dt = 1.0,
+                                 .tick_count = 10};
 
     REQUIRE(std::holds_alternative<sim::RandomWalkSpec>(config.process));
 
@@ -100,16 +92,12 @@ TEST_CASE("SimulationConfig::process is a whole-simulation choice, holding which
 
 TEST_CASE("SimulationConfig::assets accepts an arbitrary number of assets, including zero",
           "[simulation][simulation_config]") {
-    const sim::SimulationConfig empty{
-        .assets = {},
-        .correlation = math::Matrix(0, 0),
-        .process = sim::RandomWalkSpec{},
-        .strategy = minimal_strategy(0),
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .master_seed = math::rng::Seed{0},
-        .dt = 1.0,
-        .tick_count = 0};
+    const sim::SimulationConfig empty{.assets = {},
+                                      .correlation = math::Matrix(0, 0),
+                                      .process = sim::RandomWalkSpec{},
+                                      .master_seed = math::rng::Seed{0},
+                                      .dt = 1.0,
+                                      .tick_count = 0};
 
     CHECK(empty.assets.empty());
     // No validation at this level (consistent with every spec/config in this
@@ -124,46 +112,20 @@ TEST_CASE("SimulationConfig::dt and tick_count are the documented types",
     STATIC_REQUIRE(std::is_same_v<decltype(sim::SimulationConfig::master_seed), math::rng::Seed>);
 }
 
-TEST_CASE(
-    "SimulationConfig::requote_threshold_ticks defaults to one tick and holds what it is given",
-    "[simulation][simulation_config]") {
-    STATIC_REQUIRE(
-        std::is_same_v<decltype(sim::SimulationConfig::requote_threshold_ticks), mm::Ticks>);
-
-    sim::SimulationConfig config{
-        .assets = {minimal_asset(100.0)},
-        .correlation = math::Matrix::Identity(1, 1),
-        .process = sim::RandomWalkSpec{},
-        .strategy = minimal_strategy(1),
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .master_seed = math::rng::Seed{1},
-        .dt = 1.0,
-        .tick_count = 10};
-
-    CHECK(config.requote_threshold_ticks == 1); // not listed above: the default
-
-    config.requote_threshold_ticks = 0;
-    CHECK(config.requote_threshold_ticks == 0);
-}
-
-TEST_CASE("SimulationConfig::strategy is a complete, independent mm::StrategyConfig",
+TEST_CASE("SimulationConfig::agents keeps the order it is given, and an agent's behavior "
+          "is its own",
           "[simulation][simulation_config]") {
-    sim::SimulationConfig config{
-        .assets = {minimal_asset(100.0)},
-        .correlation = math::Matrix::Identity(1, 1),
-        .process = sim::RandomWalkSpec{},
-        .strategy = minimal_strategy(1),
-        .latency = {.quote_delay = sim::ConstantDelaySpec{.delay = 0.0},
-                    .adverse_flow_delay = sim::ConstantDelaySpec{.delay = 0.0}},
-        .master_seed = math::rng::Seed{1},
-        .dt = 1.0,
-        .tick_count = 10};
+    sim::SimulationConfig config{.assets = {minimal_asset(100.0)},
+                                 .correlation = math::Matrix::Identity(1, 1),
+                                 .process = sim::RandomWalkSpec{},
+                                 .agents = {minimal_agent("first"), minimal_agent("second")},
+                                 .master_seed = math::rng::Seed{1},
+                                 .dt = 1.0,
+                                 .tick_count = 10};
 
-    config.strategy.gamma = 99.0;
+    std::get<mms::agents::NoiseTraderSpec>(config.agents[1].behavior).lambda = 99.0;
 
-    // Nothing else in config aliases strategy's data; mutating it in place
-    // must not reach back into, say, a asset's own fields.
-    CHECK(config.strategy.gamma == 99.0);
-    CHECK(config.assets[0].initial_mid == 100.0);
+    CHECK(config.agents[0].profile.name == "first");
+    CHECK(std::get<mms::agents::NoiseTraderSpec>(config.agents[0].behavior).lambda == 1.0);
+    CHECK(std::get<mms::agents::NoiseTraderSpec>(config.agents[1].behavior).lambda == 99.0);
 }

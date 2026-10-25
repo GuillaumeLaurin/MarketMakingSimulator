@@ -2,12 +2,12 @@
 #define MMS_SIMULATION_LATENCY_HPP
 
 /// \file
-/// Turning a DelaySpec into an actual delay: how long one message (a quote
-/// submit, a quote cancel, or an adverse-flow order) takes to reach the
+/// Turning a DelaySpec into an actual delay: how long one message (an order or a
+/// cancel of an agent) takes to reach the
 /// exchange. Delays are in the simulation's own time unit, the same one as
 /// dt, every rate and mm::HorizonPolicy's tau, so a drawn delay adds
 /// straight onto the simulation clock to give the time a request is due.
-/// The tick loop draws from World::latency_engine(asset).
+/// Each agent draws from its own latency stream (AgentRuntime).
 
 #include <math/rng/engine.hpp>
 #include <simulation/delay_spec.hpp>

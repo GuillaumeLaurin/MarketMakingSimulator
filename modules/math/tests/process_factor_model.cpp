@@ -424,3 +424,118 @@ TEST_CASE("FactorModel geometric with no noise grows at exp(mu dt)",
     CHECK(model.prices()(0) == Catch::Approx(100.0 * std::exp(1.0)));
     CHECK(model.prices()(1) == Catch::Approx(100.0 * std::exp(-1.0)));
 }
+
+TEST_CASE("FactorModel exposes the factors' draw of the last step, zero before any step",
+          "[process][factor_model][factors]") {
+    const rng::RngHub hub{rng::Seed{0xC111'C111ULL}};
+    const Scenario s = Scenario::make();
+    std::vector<rng::RngEngine> factor_engines = engines_for(hub, rng::Subsystem::PriceFactor, 2);
+    std::vector<rng::RngEngine> reference = factor_engines;
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      std::move(factor_engines),
+                      Dynamics::Geometric};
+
+    REQUIRE(model.factor_increments().size() == 2);
+    CHECK(model.factor_increments().isZero(0.0));
+
+    constexpr double dt = 0.25;
+    for (int tick = 0; tick < 4; ++tick) {
+        model.advance(dt);
+        const Vector expected = correlated_normal_increment(s.factor_chol, reference, dt);
+
+        REQUIRE(model.factor_increments().size() == 2);
+        CHECK(max_abs_diff(model.factor_increments(), expected) < 1e-15);
+        CHECK(model.factor_increments().norm() > 0.0);
+    }
+}
+
+TEST_CASE("FactorModel's factor draw is the one its prices moved with, whatever the dynamics",
+          "[process][factor_model][factors]") {
+    const rng::RngHub hub{rng::Seed{0xC222'C222ULL}};
+    const Scenario s = Scenario::make();
+    const auto make = [&](Dynamics dynamics) {
+        return FactorModel{s.prices,
+                           s.mu,
+                           s.beta,
+                           s.factor_chol,
+                           s.idio_vol,
+                           engines_for(hub, rng::Subsystem::Price, 3),
+                           engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                           dynamics};
+    };
+    FactorModel arithmetic = make(Dynamics::Arithmetic);
+    FactorModel geometric = make(Dynamics::Geometric);
+
+    arithmetic.advance(0.5);
+    geometric.advance(0.5);
+
+    // Same engines, same draws: the dynamics only change the update formula.
+    CHECK(max_abs_diff(arithmetic.factor_increments(), geometric.factor_increments()) < 1e-15);
+}
+
+TEST_CASE("FactorModel::reset zeroes the factors and replays the same draws",
+          "[process][factor_model][factors]") {
+    const rng::RngHub hub{rng::Seed{0xC333'C333ULL}};
+    const Scenario s = Scenario::make();
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
+    model.advance(1.0);
+    const Vector first_step = model.factor_increments();
+    model.advance(1.0);
+
+    model.reset();
+    CHECK(model.factor_increments().isZero(0.0));
+    model.advance(1.0);
+
+    CHECK(max_abs_diff(model.factor_increments(), first_step) < 1e-15);
+}
+
+TEST_CASE("FactorModel::advance(0) draws factors of zero size",
+          "[process][factor_model][factors]") {
+    const rng::RngHub hub{rng::Seed{0xC444'C444ULL}};
+    const Scenario s = Scenario::make();
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
+
+    model.advance(0.0);
+
+    REQUIRE(model.factor_increments().size() == 2);
+    CHECK(model.factor_increments().isZero(0.0));
+}
+
+TEST_CASE("A PriceProcess reaches the factors through its base class",
+          "[process][factor_model][factors]") {
+    const rng::RngHub hub{rng::Seed{0xC555'C555ULL}};
+    const Scenario s = Scenario::make();
+    FactorModel model{s.prices,
+                      s.mu,
+                      s.beta,
+                      s.factor_chol,
+                      s.idio_vol,
+                      engines_for(hub, rng::Subsystem::Price, 3),
+                      engines_for(hub, rng::Subsystem::PriceFactor, 2),
+                      Dynamics::Arithmetic};
+    mms::math::process::PriceProcess& process = model;
+
+    process.advance(1.0);
+
+    CHECK(process.factor_increments().size() == 2);
+    CHECK(&process.factor_increments() == &model.factor_increments());
+}
