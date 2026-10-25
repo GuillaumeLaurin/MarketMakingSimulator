@@ -11,12 +11,13 @@
 #include <string_view>
 
 #include <CLI/CLI.hpp>
-#include <fmt/core.h>
-#include <mms/version.hpp>
-#include "CLI/CLI.hpp"
-
 #include <application/workspace.hpp>
+#include <fmt/core.h>
 #include <stdlib.h>
+
+#include <mms/version.hpp>
+
+#include "CLI/CLI.hpp"
 
 namespace {
 
@@ -47,13 +48,14 @@ std::optional<std::string> environment(std::string_view name) {
 #endif
 }
 
-/// Opens the workspace where --workspace, MMS_HOME or the default says it is.
-app::Workspace open_workspace(const std::optional<std::string>& option) {
+/// Where --workspace, MMS_HOME or the default says the workspace is. Nothing is created: a
+/// command that writes opens the workspace, one that reads only locates it.
+app::Workspace locate_workspace(const std::optional<std::string>& option) {
     std::optional<std::filesystem::path> root;
     if (option.has_value()) {
         root = std::filesystem::path(*option);
     }
-    return app::Workspace::open(app::resolve_workspace_root(root, environment));
+    return app::Workspace::at(app::resolve_workspace_root(root, environment));
 }
 
 /// A path as the operating system writes it, with one kind of separator.
@@ -62,8 +64,10 @@ std::string shown(const std::filesystem::path& path) {
 }
 
 int info(const std::optional<std::string>& option) {
-    const app::Workspace workspace = open_workspace(option);
-    fmt::print("workspace  {}\n", shown(workspace.root()));
+    const app::Workspace workspace = locate_workspace(option);
+    fmt::print("workspace  {}{}\n",
+               shown(workspace.root()),
+               workspace.exists() ? "" : "  (not created yet)");
     fmt::print("settings   {}\n", shown(workspace.settings_file()));
     fmt::print("scenarios  {}\n", shown(workspace.scenarios_dir()));
     fmt::print("saves      {}\n", shown(workspace.saves_dir()));
@@ -82,11 +86,11 @@ int main(int argc, char** argv) {
     app.add_option("--workspace",
                    workspace_option,
                    ("The folder that holds the settings, scenarios, saves and logs. "
-                   "Defaults to $MMS_HOME, then to a folder of the operating system."));
+                    "Defaults to $MMS_HOME, then to a folder of the operating system."));
 
     CLI::App* info_command =
         app.add_subcommand("info", "Show where the workspace is and what it holds");
-    
+
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& error) {

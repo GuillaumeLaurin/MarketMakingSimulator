@@ -29,8 +29,8 @@ namespace mms::application {
 /// table, so nothing here depends on the machine the tests run on.
 using EnvLookup = std::function<std::optional<std::string>(std::string_view name)>;
 
-/// The folder for the data of one user: %LOCALAPPDATA%\MMS on Windows, ~/Library/Application
-/// Support/MMS on macOS, $XDG_DATA_HOME/mms or ~/.local/share/mms elsewhere. Throws
+/// The folder for the data of one user: %LOCALAPPDATA%\mms on Windows, ~/Library/Application
+/// Support/mms on macOS, $XDG_DATA_HOME/mms or ~/.local/share/mms elsewhere. Throws
 /// std::runtime_error when the variables that locate the home are missing or empty.
 [[nodiscard]] MMS_APPLICATION_EXPORT std::filesystem::path
 default_workspace_root(const EnvLookup& env);
@@ -39,8 +39,7 @@ default_workspace_root(const EnvLookup& env);
 /// default_workspace_root. Throws what default_workspace_root throws, and
 /// std::invalid_argument for an empty `option`.
 [[nodiscard]] MMS_APPLICATION_EXPORT std::filesystem::path
-resolve_workspace_root(const std::optional<std::filesystem::path>& option, const EnvLookup&
-env);
+resolve_workspace_root(const std::optional<std::filesystem::path>& option, const EnvLookup& env);
 
 /// Throws std::invalid_argument unless `name` is fit to be the name of a save folder on
 /// every platform: 1 to 64 characters among letters, digits, '.', '_' and '-', not starting
@@ -53,17 +52,25 @@ MMS_APPLICATION_EXPORT void validate_save_name(std::string_view name);
 /// UTC as YYYYMMDD-HHMMSS. An empty scenario name gives "run". A long one is cut so that the
 /// whole fits in 64 characters. The result always passes validate_save_name.
 [[nodiscard]] MMS_APPLICATION_EXPORT std::string
-default_save_name(std::string_view scenario_name, std::chrono::system_clock::time_point
-when);
+default_save_name(std::string_view scenario_name, std::chrono::system_clock::time_point when);
 
 class MMS_APPLICATION_EXPORT Workspace {
 public:
+    /// The workspace at `root`, without touching the disk: nothing is created and the folder
+    /// need not exist. This is what a command that only reads uses. Throws
+    /// std::invalid_argument for an empty `root`.
+    [[nodiscard]] static Workspace at(const std::filesystem::path& root);
+
     /// Opens the workspace at `root`, creating it and its folders when they are not there.
-    /// Throws std::runtime_error, naming the path, when a folder cannot be created or when
-    /// `root` exists and is not a folder.
+    /// This is what a command that writes uses. Throws std::runtime_error, naming the path,
+    /// when a folder cannot be created or when `root` exists and is not a folder, and
+    /// std::invalid_argument for an empty `root`.
     [[nodiscard]] static Workspace open(const std::filesystem::path& root);
 
     [[nodiscard]] const std::filesystem::path& root() const noexcept { return root_; }
+
+    /// Is the root there, as a folder? False for a workspace that has only been located.
+    [[nodiscard]] bool exists() const;
 
     [[nodiscard]] std::filesystem::path settings_file() const { return root_ / "settings.toml"; }
 

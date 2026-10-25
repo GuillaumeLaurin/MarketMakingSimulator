@@ -64,7 +64,7 @@ void make_folder(const std::filesystem::path& path) {
 
 } // namespace
 
-std::filesystem::path default_workspace_root(const EnvLookup &env) {
+std::filesystem::path default_workspace_root(const EnvLookup& env) {
 #if defined(_WIN32)
     if (const auto local = non_empty(env, "LOCALAPPDATA")) {
         return std::filesystem::path(*local) / "mms";
@@ -89,10 +89,8 @@ std::filesystem::path default_workspace_root(const EnvLookup &env) {
 #endif
 }
 
-std::filesystem::path resolve_workspace_root(
-    const std::optional<std::filesystem::path> &option, 
-    const EnvLookup &env
-) {
+std::filesystem::path resolve_workspace_root(const std::optional<std::filesystem::path>& option,
+                                             const EnvLookup& env) {
     if (option.has_value()) {
         if (option->empty()) {
             throw std::invalid_argument("Workspace: the workspace option is empty");
@@ -123,43 +121,37 @@ void validate_save_name(std::string_view name) {
     }
     if (is_device_name(name)) {
         refuse("it is the name of a Windows device");
-    }    
+    }
 }
 
-std::string default_save_name(
-    std::string_view scenario_name, 
-    std::chrono::system_clock::time_point when
-){
+std::string default_save_name(std::string_view scenario_name,
+                              std::chrono::system_clock::time_point when) {
     using namespace std::chrono;
     const sys_days day = floor<days>(when);
     const year_month_day date{day};
-    const hh_mm_ss<seconds> time{floor<seconds>(when  - day)};
+    const hh_mm_ss<seconds> time{floor<seconds>(when - day)};
 
     std::array<char, 20> stamp{};
-    static_cast<void>(std::snprintf(
-        stamp.data(),
-        stamp.size(),
-        "%04d%02u%02u-%02lld%02lld%02lld",
-        static_cast<int>(date.year()),
-        static_cast<unsigned>(date.month()),
-        static_cast<unsigned>(date.day()),
-        static_cast<long long>(time.hours().count()),
-        static_cast<long long>(time.minutes().count()),
-        static_cast<long long>(time.seconds().count())
-    ));
+    static_cast<void>(std::snprintf(stamp.data(),
+                                    stamp.size(),
+                                    "%04d%02u%02u-%02lld%02lld%02lld",
+                                    static_cast<int>(date.year()),
+                                    static_cast<unsigned>(date.month()),
+                                    static_cast<unsigned>(date.day()),
+                                    static_cast<long long>(time.hours().count()),
+                                    static_cast<long long>(time.minutes().count()),
+                                    static_cast<long long>(time.seconds().count())));
     const std::string suffix = std::string("-") + stamp.data();
 
     std::string base(scenario_name);
-    std::ranges::replace_if(
-        base, [](char c) { return !allowed(c); }, '-'
-    );
+    std::ranges::replace_if(base, [](char c) { return !allowed(c); }, '-');
 
     // A name cannot start with '.' or '-', nor end with '.'.
     while (!base.empty() && (base.front() == '.' || base.front() == '-')) {
         base.erase(base.begin());
     }
     base.resize(std::min(base.size(), max_save_name_length - suffix.size()));
-    while(!base.empty() && base.back() == '.') {
+    while (!base.empty() && base.back() == '.') {
         base.pop_back();
     }
     if (base.empty()) {
@@ -172,13 +164,25 @@ std::string default_save_name(
     return name;
 }
 
+Workspace Workspace::at(const std::filesystem::path& root) {
+    if (root.empty()) {
+        throw std::invalid_argument("Workspace: the root is empty");
+    }
+    return Workspace(root);
+}
+
+bool Workspace::exists() const {
+    std::error_code error;
+    return std::filesystem::is_directory(root_, error);
+}
+
 Workspace Workspace::open(const std::filesystem::path& root) {
+    Workspace workspace = at(root);
     std::error_code error;
     if (std::filesystem::exists(root, error) && !std::filesystem::is_directory(root, error)) {
         throw std::runtime_error("Workspace: " + root.string() + " exists and is not a folder");
     }
     make_folder(root);
-    Workspace workspace(root);
     make_folder(workspace.scenarios_dir());
     make_folder(workspace.saves_dir());
     make_folder(workspace.logs_dir());
